@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vesselwatch"
+version = "0.1.0"
+description = "Vessel detection and classification from satellite imagery"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Daniel Boppert" }]
+dependencies = [
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "numpy",
+    "pandas",
+    "pillow",
+    "pyyaml",
+    "matplotlib",
+    "scikit-learn",
+]
+
+[project.optional-dependencies]
+detect = ["ultralytics>=8.3", "opencv-python"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

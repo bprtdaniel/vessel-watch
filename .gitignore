@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+.env
+.env.*
+
+# Data, runs and weights never go in the repo
+data/
+runs/
+*.pth
+*.pt
+*.onnx
+*.bmp
+*.tif
+*.tiff
+*.jp2
+*.SAFE/
+
+# Monitor state and downloads
+state/
+downloads/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
