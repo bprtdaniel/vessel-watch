@@ -49,9 +49,11 @@ Data and output folders come from `data_root` / `runs_dir` in the config, or the
 - `RandomRotation(0.5)` is ±0.5 degrees; different optimiser per model; no seeds.
 
 ## Status
-Roadmap lives in `README.md`. Done: steps 3–6. Step 1: `vesselwatch.inventory` and `notebooks/colab_inventory.ipynb` are written but not yet run on Drive; step 2 is open. `data/`, `models/`, `train.py`, `evaluate.py`, `configs/legacy/` and the Colab launcher exist; `detect/` and `monitor/` do not.
+Roadmap lives in `README.md`. Done: steps 3–6. Step 1 done (inventory run on Drive 2026-10-03); step 2 is open. `data/`, `models/`, `train.py`, `evaluate.py`, `configs/legacy/` and the Colab launcher exist; `detect/` and `monitor/` do not.
 
 The package currently reproduces the original study, defects included, behind two config switches (`labels: image_majority`, `per_split_classes: true`) so step 7 can check it against the saved weights. Phase 2 changes the defaults.
+
+Inventory result: all nine original runs are complete on Drive in `5.Projects/models`. The canonical files are `best_model_{Net|Net_Max|ResNet}_Level{1,2,3}.pth` and `{Net|Net_Max|ResNet}_history_Level{1,2,3}.json`; each history's best val accuracy matches the paper. Level 3 has 48 classes. Other files there are earlier level 1 experiments (`*_deeper`, `*_geometric_aug`, `ResNet101_finetune`, `vgg_custom`, unsuffixed `Net`); `final_model_Net_Max_deeper.pth` actually holds a small `Net`. `inventory.json` sits in the same folder.
 
 Historical results (val accuracy, image-level labels, 30 epochs), Net / Net_Max / ResNet101:
 L1 (4 classes) 70 / 69 / 86, L2 (25) 19 / 18 / 51, L3 (48) 10 / 10 / 23.

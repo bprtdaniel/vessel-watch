@@ -36,7 +36,7 @@ These numbers come with known problems, which the rework addresses: each multi-s
 ## Roadmap
 
 **Phase 0: inputs**
-- [ ] 1. Inventory of the trained weights and histories on Google Drive (tool written, to be run on Colab)
+- [x] 1. Inventory of the trained weights and histories on Google Drive
 - [ ] 2. Small local data sample for tests
 
 **Phase 1: foundation**
