@@ -1,0 +1,8 @@
+# Original study: ResNet101, ImageNet weights, all layers fine-tuned, level 2
+level: 2
+model: resnet101
+pretrained: true
+optimizer: adam
+lr: 0.0001
+epochs: 30
+batch_size: 32

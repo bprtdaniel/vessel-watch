@@ -1,0 +1,7 @@
+# Original study: VGG-style CNN, level 3
+level: 3
+model: net_max
+optimizer: adam
+lr: 0.001
+epochs: 30
+batch_size: 32

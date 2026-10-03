@@ -42,8 +42,8 @@ These numbers come with known problems, which the rework addresses: each multi-s
 **Phase 1: foundation**
 - [x] 3. Repository and legacy code
 - [x] 4. Project files
-- [ ] 5. Local environment
-- [ ] 6. Port the legacy scripts into one config-driven package
+- [x] 5. Local environment
+- [x] 6. Port the legacy scripts into one config-driven package
 - [ ] 7. Check the port reproduces the original numbers
 
 **Phase 2: fix the method**
@@ -77,9 +77,17 @@ These numbers come with known problems, which the rework addresses: each multi-s
 
 ```bash
 pip install -e ".[dev]"
+pytest
 ```
 
-The dataset and trained weights are not in this repository. Training runs on Google Colab with the data on Google Drive.
+The dataset and trained weights are not in this repository. Point `VESSELWATCH_DATA` at a `ShipRSImageNet_V1` folder, then:
+
+```bash
+python -m vesselwatch.train --config configs/legacy/level1_net.yaml
+python -m vesselwatch.evaluate --config configs/legacy/level1_net.yaml --weights runs/level1_net/best.pt
+```
+
+Full training runs on Google Colab with the data on Google Drive, through [`notebooks/colab_train.ipynb`](notebooks/colab_train.ipynb).
 
 ## Reference
 

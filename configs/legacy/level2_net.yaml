@@ -1,0 +1,8 @@
+# Original study: small CNN, level 2
+level: 2
+model: net
+optimizer: sgd
+lr: 0.001
+momentum: 0.9
+epochs: 30
+batch_size: 32

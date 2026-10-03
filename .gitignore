@@ -14,8 +14,8 @@ venv/
 .env.*
 
 # Data, runs and weights never go in the repo
-data/
-runs/
+/data/
+/runs/
 *.pth
 *.pt
 *.onnx
@@ -26,8 +26,8 @@ runs/
 *.SAFE/
 
 # Monitor state and downloads
-state/
-downloads/
+/state/
+/downloads/
 
 # Editors / OS
 .vscode/

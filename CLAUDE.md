@@ -20,10 +20,12 @@ Vessel detection and classification from satellite imagery. Two tracks, one pack
 Most of this layout does not exist yet; see Status.
 
 ## Commands
-- `python -m vesselwatch.train --config configs/level1_resnet.yaml`
-- `python -m vesselwatch.evaluate --run runs/<id>`
-- `python -m vesselwatch.monitor.run --aoi configs/aoi/<name>.geojson`
-- `pytest`
+- `python -m vesselwatch.train --config configs/legacy/level1_resnet101.yaml`
+- `python -m vesselwatch.evaluate --config configs/legacy/level1_resnet101.yaml --weights <file>`
+- `python -m vesselwatch.monitor.run --aoi configs/aoi/<name>.geojson` (not built yet)
+- `.venv/Scripts/python.exe -m pytest` (tests build their own tiny synthetic dataset)
+
+Data and output folders come from `data_root` / `runs_dir` in the config, or the `VESSELWATCH_DATA` / `VESSELWATCH_RUNS` environment variables.
 
 ## Rules
 - Class index mapping comes from the train split and is saved with every checkpoint. Never rebuild it from val/test.
@@ -44,7 +46,9 @@ Most of this layout does not exist yet; see Status.
 - `RandomRotation(0.5)` is ±0.5 degrees; different optimiser per model; no seeds.
 
 ## Status
-Roadmap lives in `README.md`. Done: step 3 (repo, legacy copies), step 4 (project files).
+Roadmap lives in `README.md`. Done: steps 3–6. `data/`, `models/`, `train.py`, `evaluate.py`, `configs/legacy/` and the Colab launcher exist; `detect/` and `monitor/` do not.
+
+The package currently reproduces the original study, defects included, behind two config switches (`labels: image_majority`, `per_split_classes: true`) so step 7 can check it against the saved weights. Phase 2 changes the defaults.
 
 Historical results (val accuracy, image-level labels, 30 epochs), Net / Net_Max / ResNet101:
 L1 (4 classes) 70 / 69 / 86, L2 (25) 19 / 18 / 51, L3 (48) 10 / 10 / 23.
