@@ -22,6 +22,7 @@ Most of this layout does not exist yet; see Status.
 ## Commands
 - `python -m vesselwatch.train --config configs/legacy/level1_resnet101.yaml`
 - `python -m vesselwatch.evaluate --config configs/legacy/level1_resnet101.yaml --weights <file>`
+- `python -m vesselwatch.inventory <models folder>` identifies saved weights/histories by content
 - `python -m vesselwatch.monitor.run --aoi configs/aoi/<name>.geojson` (not built yet)
 - `.venv/Scripts/python.exe -m pytest` (tests build their own tiny synthetic dataset)
 
@@ -47,7 +48,7 @@ Data and output folders come from `data_root` / `runs_dir` in the config, or the
 - `RandomRotation(0.5)` is ±0.5 degrees; different optimiser per model; no seeds.
 
 ## Status
-Roadmap lives in `README.md`. Done: steps 3–6. `data/`, `models/`, `train.py`, `evaluate.py`, `configs/legacy/` and the Colab launcher exist; `detect/` and `monitor/` do not.
+Roadmap lives in `README.md`. Done: steps 3–6. Step 1: `vesselwatch.inventory` and `notebooks/colab_inventory.ipynb` are written but not yet run on Drive; step 2 is open. `data/`, `models/`, `train.py`, `evaluate.py`, `configs/legacy/` and the Colab launcher exist; `detect/` and `monitor/` do not.
 
 The package currently reproduces the original study, defects included, behind two config switches (`labels: image_majority`, `per_split_classes: true`) so step 7 can check it against the saved weights. Phase 2 changes the defaults.
 
