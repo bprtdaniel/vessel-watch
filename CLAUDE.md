@@ -31,7 +31,8 @@ Data and output folders come from `data_root` / `runs_dir` in the config, or the
 - Class index mapping comes from the train split and is saved with every checkpoint. Never rebuild it from val/test.
 - Test split is touched once per experiment, after model selection on val.
 - Every run fixes a seed and writes config + metrics + class map to `runs/<id>/`.
-- All detectors/classifiers implement the `Predictor` interface so the monitor can swap backends.
+- The monitor deploys one model, chosen on the Track A evidence (expected: YOLO, since the monitor's job is detection). The custom CNNs and ResNet belong to the study and do not have to be deployed.
+- Keep a thin `Predictor` interface so the deployed model can be swapped later.
 - No secrets in the repo. CDSE and SMTP credentials come from environment variables / GitHub secrets.
 - Do not claim fine-grained classes on Sentinel-2 output; 10 m supports detection and size class only.
 - Training runs on Colab via `notebooks/colab_train.ipynb`; the dataset and weights live on Google Drive (`5.Projects/Data/ShipRSImageNet_V1`, `5.Projects/models`), never in the repo. Locally only a small sample exists for tests and smoke runs.

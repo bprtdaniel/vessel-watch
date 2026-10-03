@@ -17,7 +17,7 @@ Vessels that switch off or spoof AIS, such as the tankers of the Russian shadow 
 |---|---|---|
 | Data | [ShipRSImageNet](https://github.com/zzndream/ShipRSImageNet), 0.12–6 m optical, about 3,400 images and 17,500 annotated vessels | Sentinel-2, 10 m optical, via the Copernicus Data Space Ecosystem |
 | Task | Classify vessels at three label levels (4 / 25 / ~50 classes); detect with YOLO-OBB | Detect vessels in new scenes over an AOI, estimate size and heading, email an alert |
-| Models | Small CNN, VGG-style CNN, ResNet (frozen, partial and full fine-tune), YOLO11-OBB | Detector and chip classifiers trained on Sentinel-resolution data |
+| Models | Small CNN, VGG-style CNN, ResNet (frozen, partial and full fine-tune), YOLO11-OBB | One detector trained on Sentinel-resolution data, chosen on the Track A evidence (most likely YOLO) |
 
 The tracks share one package and one predictor interface. They do not share weights: a ship that fills an image at 0.5 m is a few pixels at 10 m, so Sentinel-2 supports detection and coarse size class, not class-level identification.
 
@@ -62,7 +62,7 @@ These numbers come with known problems, which the rework addresses: each multi-s
 
 **Phase 4: Copernicus monitor**
 - [ ] 18. Copernicus Data Space client for an AOI
-- [ ] 19. Sentinel-resolution detector and chip classifiers
+- [ ] 19. Sentinel-resolution detector, using the model family that Track A shows makes most sense
 - [ ] 20. Scene check, tiling, inference, georeferencing, deduplication
 - [ ] 21. Email alerts
 - [ ] 22. Scheduled runs
