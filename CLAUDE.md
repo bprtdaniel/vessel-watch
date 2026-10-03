@@ -15,6 +15,7 @@ Vessel detection and classification from satellite imagery. Two tracks, one pack
 - `configs/`                    one YAML per experiment
 - `notebooks/`                  thin Colab launchers only, no logic
 - `legacy/`                     original Colab exports, read-only reference
+- `docs/experiments/`           parked ideas, one file each; not roadmap work until Daniel says so
 - `data/`, `runs/`              git-ignored
 
 Most of this layout does not exist yet; see Status.

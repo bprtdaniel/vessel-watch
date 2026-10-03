@@ -73,6 +73,12 @@ These numbers come with known problems, which the rework addresses: each multi-s
 - [ ] 25. Map dashboard
 - [ ] 26. Final write-up
 
+## Parked experiments
+
+Ideas written down for later; not part of the roadmap yet.
+
+- [Vessel type from Sentinel-2 with labels from archived AIS](docs/experiments/ais-type-classifier.md)
+
 ## Setup
 
 ```bash
