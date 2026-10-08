@@ -33,6 +33,25 @@ Best validation accuracy after 30 epochs, one label per image:
 
 These numbers come with known problems, which the rework addresses: each multi-ship image was given a single majority label, the model was selected and scored on the same split, and only accuracy was reported.
 
+The level 3 row is also wrong. Train and val numbered their classes separately, and at level 3 the two splits hold different classes, so correct predictions were counted as errors. Scored with one shared class index, the same weights reach 12.7% / 10.7% / 50.7%. Levels 1 and 2 are unaffected.
+
+## Results on per-vessel crops
+
+Each annotated vessel is cut out along its oriented box and classified on its own. Accuracy on the held-out test split (3,103 vessels), macro-F1 in brackets; 30 epochs, Adam, one seed:
+
+| Level | Classes | Small CNN | VGG-style CNN | ResNet101 (fine-tuned) | Majority class |
+|---|---|---|---|---|---|
+| 1 | 4 | 85.1% (74.2) | 84.2% (68.2) | 90.2% (82.2) | 38.0% |
+| 2 | 25 | 59.5% (56.9) | 42.4% (26.0) | 68.4% (67.0) | 12.8% |
+| 3 | 50 | 58.9% (70.1) | 38.5% (16.1) | 70.0% (78.4) | 12.8% |
+
+- The pretrained ResNet101 leads at every level, by 5 points at 4 classes and about 10 at 25 and 50.
+- At level 3 it separates named warship classes almost perfectly (F1 above 90 for most) and struggles with catch-all and small-boat classes such as Other Ship, Other Merchant, Motorboat and Sailboat (F1 between 29 and 60). That is why macro-F1 exceeds accuracy there.
+- Size matters for fine classes: level 3 accuracy is 54% for small vessels (box under 32² pixels), 73% for medium and 81% for large.
+- Leaving out the `Dock` class changes accuracy by less than 2 points.
+
+Caveats: the VGG-style CNN trained unstably under this recipe and was still improving at epoch 30, so its row understates the architecture. Validation accuracy ran 6 to 7 points above test at levels 2 and 3, so the validation split is optimistic. These results are not directly comparable with the original table, which classified whole scenes.
+
 ## Roadmap
 
 **Phase 0: inputs**
@@ -52,7 +71,7 @@ These numbers come with known problems, which the rework addresses: each multi-s
 - [x] 10. Per-vessel crops instead of one label per image
 - [ ] 11. Augmentation, class balancing, schedule, early stopping
 - [x] 12. Macro-F1, per-class metrics, confusion matrices
-- [ ] 13. Rerun all models at all levels under identical conditions
+- [x] 13. Rerun all models at all levels under identical conditions
 
 **Phase 3: pretrained models and detection**
 - [ ] 14. ResNet ablation: linear head, partial, full fine-tune, from scratch
