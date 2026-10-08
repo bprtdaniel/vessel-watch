@@ -9,6 +9,7 @@ import yaml
 
 DATA_ENV = "VESSELWATCH_DATA"
 RUNS_ENV = "VESSELWATCH_RUNS"
+CACHE_ENV = "VESSELWATCH_CACHE"
 
 
 @dataclass
@@ -24,11 +25,20 @@ class Config:
     pretrained: bool = False        # ImageNet weights, torchvision models only
     seed: int = 0
     num_workers: int = 2
-    # Legacy behaviour switches, kept so the original numbers can be reproduced.
-    labels: str = "image_majority"  # one majority-vote label per image
-    per_split_classes: bool = True  # each split builds its own class index
+    # "vessel_crops": one sample per annotated vessel, cut out by its box.
+    # "image_majority": the original study's one majority-vote label per image.
+    labels: str = "vessel_crops"
+    # Original study only: each split builds its own class index.
+    per_split_classes: bool = False
+    # vessel_crops only. The dataset's test split has no labels, so the official
+    # val split is the held-out test set and validation is carved out of train.
+    val_fraction: float = 0.15      # share of train images used for validation
+    split_seed: int = 0
+    crop: str = "rotated"           # "rotated" follows the oriented box, "upright" its bounding rectangle
+    crop_margin: float = 0.1        # context added on each side, as a share of the box
     data_root: str | None = None    # folder holding COCO_Format/ and VOC_Format/
     runs_dir: str | None = None
+    cache_dir: str | None = None    # extracted crops are kept here between epochs and runs
 
     @property
     def run_name(self) -> str:
@@ -42,6 +52,10 @@ class Config:
 
     def run_dir(self) -> Path:
         return Path(self.runs_dir or os.environ.get(RUNS_ENV, "runs")) / self.run_name
+
+    def resolved_cache_dir(self) -> Path | None:
+        cache = self.cache_dir or os.environ.get(CACHE_ENV)
+        return Path(cache) if cache else None
 
     def to_dict(self) -> dict:
         return asdict(self)

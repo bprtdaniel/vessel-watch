@@ -1,0 +1,8 @@
+# Per-vessel crops: small CNN trained from scratch, level 1
+name: crops_level1_net
+level: 1
+model: net
+optimizer: adam
+lr: 0.001
+epochs: 30
+batch_size: 32

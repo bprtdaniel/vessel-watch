@@ -24,7 +24,8 @@ def _write_split(root, split, level, image_cats, start_id):
         images.append({"id": img_id, "file_name": fname, "width": 360, "height": 300})
         for cat in cats:
             annotations.append({"id": len(annotations) + 1, "image_id": img_id,
-                                "category_id": cat, "bbox": [10, 10, 50, 20]})
+                                "category_id": cat, "bbox": [10, 10, 50, 20], "area": 1000.0,
+                                "segmentation": [[10, 10, 10, 30, 60, 30, 60, 10]]})
     path = root / "COCO_Format" / f"ShipRSImageNet_bbox_{split}_level_{level}.json"
     with open(path, "w") as f:
         json.dump({"images": images, "annotations": annotations, "categories": CATEGORIES}, f)

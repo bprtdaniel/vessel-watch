@@ -15,7 +15,7 @@ Vessels that switch off or spoof AIS, such as the tankers of the Russian shadow 
 
 | | Track A: classification study | Track B: Copernicus monitor |
 |---|---|---|
-| Data | [ShipRSImageNet](https://github.com/zzndream/ShipRSImageNet), 0.12–6 m optical, about 3,400 images and 17,500 annotated vessels | Sentinel-2, 10 m optical, via the Copernicus Data Space Ecosystem |
+| Data | [ShipRSImageNet](https://github.com/zzndream/ShipRSImageNet), 0.12–6 m optical, about 3,400 images and 17,500 annotated vessels, of which 2,748 images and 13,963 vessels have public labels | Sentinel-2, 10 m optical, via the Copernicus Data Space Ecosystem |
 | Task | Classify vessels at three label levels (4 / 25 / ~50 classes); detect with YOLO-OBB | Detect vessels in new scenes over an AOI, estimate size and heading, email an alert |
 | Models | Small CNN, VGG-style CNN, ResNet (frozen, partial and full fine-tune), YOLO11-OBB | One detector trained on Sentinel-resolution data, chosen on the Track A evidence (most likely YOLO) |
 
@@ -44,14 +44,14 @@ These numbers come with known problems, which the rework addresses: each multi-s
 - [x] 4. Project files
 - [x] 5. Local environment
 - [x] 6. Port the legacy scripts into one config-driven package
-- [ ] 7. Check the port reproduces the original numbers
+- [x] 7. Check the port reproduces the original numbers
 
 **Phase 2: fix the method**
-- [ ] 8. Stable class mapping, correct eval mode, seeds
-- [ ] 9. Held-out test split
-- [ ] 10. Per-vessel crops instead of one label per image
+- [x] 8. Stable class mapping, correct eval mode, seeds
+- [x] 9. Held-out test split
+- [x] 10. Per-vessel crops instead of one label per image
 - [ ] 11. Augmentation, class balancing, schedule, early stopping
-- [ ] 12. Macro-F1, per-class metrics, confusion matrices
+- [x] 12. Macro-F1, per-class metrics, confusion matrices
 - [ ] 13. Rerun all models at all levels under identical conditions
 
 **Phase 3: pretrained models and detection**
@@ -89,11 +89,14 @@ pytest
 The dataset and trained weights are not in this repository. Point `VESSELWATCH_DATA` at a `ShipRSImageNet_V1` folder, then:
 
 ```bash
-python -m vesselwatch.train --config configs/legacy/level1_net.yaml
-python -m vesselwatch.evaluate --config configs/legacy/level1_net.yaml --weights runs/level1_net/best.pt
+python -m vesselwatch.train --config configs/crops/level1_net.yaml
+python -m vesselwatch.evaluate --config configs/crops/level1_net.yaml --weights runs/crops_level1_net/best.pt --split test
+python -m vesselwatch.study --configs configs/crops    # all nine runs, each scored once on test
 ```
 
-Full training runs on Google Colab with the data on Google Drive, through [`notebooks/colab_train.ipynb`](notebooks/colab_train.ipynb).
+`configs/crops/` holds the corrected experiments: one sample per annotated vessel, cut out along its oriented box. The dataset's test labels are not public, so its val split serves as the held-out test set and validation is carved out of train by image. `configs/legacy/` reproduces the original study.
+
+Full training runs on Google Colab with the data on Google Drive, through [`notebooks/colab_study.ipynb`](notebooks/colab_study.ipynb).
 
 ## Reference
 

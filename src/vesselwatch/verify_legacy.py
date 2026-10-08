@@ -25,7 +25,15 @@ def legacy_weights_name(run: str) -> str:
     return f"best_model_{LEGACY_MODEL_TOKEN[model]}_Level{level.removeprefix('level')}.pth"
 
 
-def verify(models_dir, configs_dir="configs/legacy", data_root=None, num_workers=None) -> list[dict]:
+def verify(models_dir, configs_dir="configs/legacy", data_root=None, num_workers=None,
+           shared_classes=False) -> list[dict]:
+    """Score the nine original weights.
+
+    `shared_classes` numbers the val labels with the train class index instead
+    of one built from val alone. If the two splits hold the same classes the
+    scores do not move; if they move, the original numbers were distorted.
+    """
+    per_split_classes = False if shared_classes else None  # None keeps the config's value
     rows = []
     for run, paper_acc in PAPER_BEST_VAL_ACC.items():
         row = {"run": run, "paper": paper_acc, "val_acc": None, "diff": None}
@@ -34,7 +42,8 @@ def verify(models_dir, configs_dir="configs/legacy", data_root=None, num_workers
             row["status"] = f"weights missing: {weights.name}"
         else:
             try:
-                cfg = load_config(Path(configs_dir) / f"{run}.yaml", data_root=data_root, num_workers=num_workers)
+                cfg = load_config(Path(configs_dir) / f"{run}.yaml", data_root=data_root, num_workers=num_workers,
+                                  per_split_classes=per_split_classes)
                 _, val_acc = evaluate(cfg, weights)
                 row["val_acc"] = round(val_acc, 2)
                 row["diff"] = round(val_acc - paper_acc, 2)
@@ -59,14 +68,20 @@ def main(argv=None):
     parser.add_argument("--data-root")
     parser.add_argument("--num-workers", type=int)
     parser.add_argument("--out", help="write the comparison as JSON to this file")
+    parser.add_argument("--shared-classes", action="store_true",
+                        help="number the val labels with the train class index, to test the original numbering")
     args = parser.parse_args(argv)
 
     print(f"{'run':<18} {'paper':>7} {'measured':>9} {'diff':>7}   status")
     print("-" * 60)
-    rows = verify(args.models_dir, args.configs_dir, args.data_root, args.num_workers)
+    rows = verify(args.models_dir, args.configs_dir, args.data_root, args.num_workers, args.shared_classes)
 
     matched = sum(r["status"] == "match" for r in rows)
-    print(f"\n{matched} of {len(rows)} runs reproduce the paper within {TOLERANCE} points.")
+    if args.shared_classes:
+        print(f"\n{matched} of {len(rows)} runs keep their score with one shared class index. "
+              "A run that differs was scored against shifted labels in the original study.")
+    else:
+        print(f"\n{matched} of {len(rows)} runs reproduce the paper within {TOLERANCE} points.")
     if args.out:
         with open(args.out, "w") as f:
             json.dump(rows, f, indent=2)

@@ -33,6 +33,22 @@ def test_verify_scores_present_runs_and_reports_the_rest(data_root, tmp_path):
     assert rows["level3_resnet101"]["status"] == "weights missing: best_model_ResNet_Level3.pth"
 
 
+def test_shared_classes_rescores_with_the_train_index(data_root, tmp_path, capsys):
+    models = tmp_path / "models"
+    models.mkdir()
+    torch.save(build_model("net", 4).state_dict(), models / "best_model_Net_Level1.pth")
+    kwargs = dict(data_root=str(data_root), num_workers=0)
+
+    legacy = verify(models, CONFIG_DIR, **kwargs)[0]
+    shared = verify(models, CONFIG_DIR, shared_classes=True, **kwargs)[0]
+    assert shared["val_acc"] is not None and shared["status"] in ("match", "DIFFERS")
+    assert legacy["val_acc"] is not None
+
+    main(["--models-dir", str(models), "--configs-dir", str(CONFIG_DIR), "--data-root", str(data_root),
+          "--num-workers", "0", "--shared-classes"])
+    assert "shared class index" in capsys.readouterr().out
+
+
 def test_cli_writes_json(data_root, tmp_path, capsys):
     models = tmp_path / "models"
     models.mkdir()

@@ -1,0 +1,9 @@
+# Per-vessel crops: ResNet101, ImageNet weights, all layers fine-tuned, level 3
+name: crops_level3_resnet101
+level: 3
+model: resnet101
+pretrained: true
+optimizer: adam
+lr: 0.0001
+epochs: 30
+batch_size: 32

@@ -5,3 +5,5 @@ optimizer: adam
 lr: 0.001
 epochs: 30
 batch_size: 32
+labels: image_majority
+per_split_classes: true
