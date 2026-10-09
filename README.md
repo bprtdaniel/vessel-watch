@@ -52,6 +52,30 @@ Each annotated vessel is cut out along its oriented box and classified on its ow
 
 Caveats: the VGG-style CNN trained unstably under this recipe and was still improving at epoch 30, so its row understates the architecture. Validation accuracy ran 6 to 7 points above test at levels 2 and 3, so the validation split is optimistic. These results are not directly comparable with the original table, which classified whole scenes.
 
+## Detection and the two-stage pipeline
+
+A YOLO11s-OBB detector, pretrained on DOTA and fine-tuned on the dataset's oriented boxes, finds the vessels; each detection is cut out along its box and classified by the ResNet101 from the crop study. On the held-out test split (550 scenes, 3,103 vessels) the detector reaches 88.8% precision, 85.3% recall, 87.8 mAP50 and 68.2 mAP50-95.
+
+Pipeline at a confidence threshold of 0.25; a vessel counts as found if a detection overlaps its box with IoU of at least 0.5:
+
+| Level | Classes | Vessels found | Correct class, if found | Found and correct | Classifier on true boxes |
+|---|---|---|---|---|---|
+| 1 | 4 | 87.4% | 91.6% | 80.1% | 90.2% |
+| 2 | 25 | 87.4% | 68.9% | 60.2% | 68.4% |
+| 3 | 50 | 87.4% | 71.4% | 62.4% | 70.0% |
+
+Detected boxes cost the classifier nothing: it is as accurate on them as on the hand-drawn ones. What the pipeline loses, it loses to the 12.6% of vessels the detector misses; 78.3% of its detections match a vessel.
+
+How the first prototype compares, at level 2:
+
+| Detector | Crops and classifier | Vessels found | Correct class, if found | Found and correct |
+|---|---|---|---|---|
+| Stock YOLO11n-OBB, confidence 0.5 | upright crops, ResNet101 trained on whole scenes | 56.1% | 19.9% | 11.2% |
+| Stock YOLO11n-OBB | rotated crops, ResNet101 trained on crops | 65.5% | 60.3% | 39.5% |
+| Fine-tuned YOLO11s-OBB | rotated crops, ResNet101 trained on crops | 87.4% | 68.9% | 60.2% |
+
+The prototype's classifier had never seen a single-vessel crop and is right on one found vessel in five. Caveats: the stock detector has no dock class (about 5% of the test objects), the last two rows differ in model size as well as in fine-tuning, and the confidence threshold was not tuned.
+
 ## Roadmap
 
 **Phase 0: inputs**
@@ -75,8 +99,8 @@ Caveats: the VGG-style CNN trained unstably under this recipe and was still impr
 
 **Phase 3: pretrained models and detection**
 - [ ] 14. ResNet ablation: linear head, partial, full fine-tune, from scratch
-- [ ] 15. YOLO11-OBB trained end to end on the dataset
-- [ ] 16. Two-stage detect, rotated crop, classify pipeline
+- [x] 15. YOLO11-OBB trained on the dataset (as a localiser; the class comes from the classifier)
+- [x] 16. Two-stage detect, rotated crop, classify pipeline
 - [ ] 17. Common predictor interface
 
 **Phase 4: Copernicus monitor**
