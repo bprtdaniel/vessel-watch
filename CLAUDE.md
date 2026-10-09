@@ -12,7 +12,7 @@ Vessel detection and classification from satellite imagery. Two tracks, one pack
 - `src/vesselwatch/evaluate.py` scores weights on a split, writes metrics and confusion matrix
 - `src/vesselwatch/metrics.py`  macro-F1, per-class, by-size, majority baseline
 - `src/vesselwatch/study.py`    trains and scores every config in a folder, resumable
-- `src/vesselwatch/detect/`     YOLO-OBB wrapper, rotated crop extraction
+- `src/vesselwatch/detect/`     YOLO-OBB dataset export and training wrapper, two-stage pipeline with per-stage scoring
 - `src/vesselwatch/monitor/`    CDSE search/download, tiling, inference, state, email
 - `configs/`                    one YAML per experiment
 - `notebooks/`                  thin Colab launchers only, no logic
@@ -26,6 +26,8 @@ Most of this layout does not exist yet; see Status.
 - `python -m vesselwatch.train --config configs/crops/level1_resnet101.yaml`
 - `python -m vesselwatch.evaluate --config configs/crops/level1_resnet101.yaml --weights <file> --split val|test`
 - `python -m vesselwatch.study --configs configs/crops` runs all nine crop experiments, skipping finished ones
+- `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_obb.yaml` exports the dataset, trains the detector, scores it once on test (needs the `detect` extra)
+- `python -m vesselwatch.detect.pipeline --name <name> --detector <pt> --classifier-config <yaml> --classifier-weights <pt>` detect → crop → classify on the test split
 - `python -m vesselwatch.inventory <models folder>` identifies saved weights/histories by content
 - `python -m vesselwatch.verify_legacy --models-dir <models folder>` scores the nine original weights against the paper (`--shared-classes` rescored with the train class index)
 - `python -m vesselwatch.monitor.run --aoi configs/aoi/<name>.geojson` (not built yet)
@@ -53,7 +55,7 @@ Data and output folders come from `data_root` / `runs_dir` in the config, or the
 - `RandomRotation(0.5)` is ±0.5 degrees; different optimiser per model; no seeds.
 
 ## Status
-Roadmap lives in `README.md`. Done: steps 3–10, 12 and 13. Next: batch 2, steps 15 and 16 (YOLO-OBB detector with a single `ship` class, then detect → rotated crop → classify, each stage scored separately, with `Code/yolo11n-OBB_vessel_detection.ipynb` as the naive baseline), followed by a Colab session. After that: a short write-up of old vs. new results and a one-page Sentinel design note. Steps 11 and 14 are postponed. Step 1 done (inventory run on Drive 2026-10-03); step 2 is deferred until something local needs real data. Step 7 done (Colab, 2026-10-08): all nine original weights score within 0.01 points of the paper through the ported package; result in `5.Projects/models/legacy_verification.json`. `detect/` and `monitor/` do not exist yet.
+Roadmap lives in `README.md`. Done: steps 3–10, 12 and 13. Steps 15 and 16 are written and tested on synthetic data but not yet run on the real data: next is a Colab session with `notebooks/colab_detect.ipynb` (detector training, the pipeline at levels 1–3, and two level 2 comparisons against the first prototype's setup from `Code/yolo11n-OBB_vessel_detection.ipynb`). The detector trains on the level 0 boxes and only localises; the class comes from the crop classifier. Resuming an interrupted detector training is untested. After that: a short write-up of old vs. new results and a one-page Sentinel design note. Steps 11 and 14 are postponed. Step 1 done (inventory run on Drive 2026-10-03); step 2 is deferred until something local needs real data. Step 7 done (Colab, 2026-10-08): all nine original weights score within 0.01 points of the paper through the ported package; result in `5.Projects/models/legacy_verification.json`. `monitor/` does not exist yet.
 
 The default setup is the corrected one (`configs/crops/`): `labels: vessel_crops` gives one sample per annotated vessel, cut along its oriented box, with the class list taken from the train file's categories. The original study, defects included, is kept behind two switches set in `configs/legacy/` (`labels: image_majority`, `per_split_classes: true`). All crop runs use Adam and differ only in model and learning rate; the model is selected on val accuracy.
 

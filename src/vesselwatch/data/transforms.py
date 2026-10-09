@@ -51,6 +51,15 @@ def crop_eval_transform():
     ])
 
 
+def squash_eval_transform():
+    """Stretch the crop to 224 x 224 without padding, as the first two-stage prototype did."""
+    return transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ])
+
+
 def eval_transform():
     return transforms.Compose([
         transforms.Resize(256),

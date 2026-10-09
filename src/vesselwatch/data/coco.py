@@ -23,16 +23,17 @@ def category_names(coco_json: str | Path) -> list[str]:
 
 
 def coco_to_vessel_records(coco_json: str | Path) -> pd.DataFrame:
-    """One row per annotated vessel: filename, image_id, label, polygon, area.
+    """One row per annotated vessel: filename, image_id, label, polygon, area, width, height.
 
     `polygon` is the oriented box as (x1, y1, ..., x4, y4), taken from the
     annotation's `segmentation`. Annotations without four corner points fall
-    back to the corners of the upright `bbox`.
+    back to the corners of the upright `bbox`. `width` and `height` are those of
+    the image.
     """
     with open(coco_json) as f:
         data = json.load(f)
 
-    images = {img["id"]: img["file_name"] for img in data["images"]}
+    images = {img["id"]: img for img in data["images"]}
     categories = {cat["id"]: cat["name"] for cat in data["categories"]}
 
     records = []
@@ -44,13 +45,15 @@ def coco_to_vessel_records(coco_json: str | Path) -> pd.DataFrame:
         else:
             polygon = (x, y, x, y + h, x + w, y + h, x + w, y)
         records.append({
-            "filename": images[ann["image_id"]],
+            "filename": images[ann["image_id"]]["file_name"],
             "image_id": ann["image_id"],
             "label": categories[ann["category_id"]],
             "polygon": polygon,
             "area": float(ann.get("area", w * h)),
+            "width": images[ann["image_id"]].get("width"),
+            "height": images[ann["image_id"]].get("height"),
         })
-    return pd.DataFrame(records, columns=["filename", "image_id", "label", "polygon", "area"])
+    return pd.DataFrame(records, columns=["filename", "image_id", "label", "polygon", "area", "width", "height"])
 
 
 def split_images(image_ids, val_fraction: float, seed: int) -> tuple[set, set]:

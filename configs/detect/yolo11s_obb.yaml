@@ -1,0 +1,7 @@
+# YOLO11-OBB (small), pretrained on DOTA, fine-tuned on ShipRSImageNet level 0 boxes
+name: yolo11s_obb
+weights: yolo11s-obb.pt
+level: 0
+epochs: 100
+imgsz: 1024
+batch: 16
