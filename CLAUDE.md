@@ -39,7 +39,7 @@ Data and output folders come from `data_root` / `runs_dir` in the config, or the
 - Class index mapping comes from the train split and is saved with every checkpoint. Never rebuild it from val/test.
 - Test split is touched once per experiment, after model selection on val. The dataset's own test split has no labels: the official val split is the test set, and validation is carved out of train by image (`val_fraction`, `split_seed`).
 - Every run fixes a seed and writes config + metrics + class map to `runs/<id>/`.
-- The monitor deploys one model, chosen on the Track A evidence (expected: YOLO, since the monitor's job is detection). The custom CNNs and ResNet belong to the study and do not have to be deployed.
+- The monitor deploys Daniel's own models, even where a published model scores higher (decided 2026-10-09). Published models, such as the Finnish Environment Institute's Sentinel-2 YOLOv8 detector, are benchmarks: report both scores side by side and say the choice was deliberate.
 - Keep a thin `Predictor` interface so the deployed model can be swapped later.
 - No secrets in the repo. CDSE and SMTP credentials come from environment variables / GitHub secrets.
 - Do not claim fine-grained classes on Sentinel-2 output; 10 m supports detection and size class only.
@@ -73,6 +73,22 @@ Open questions from that run:
 - Val ran 6 to 7 points above test at L2 and L3. Suspected cause: images are tiles of larger scenes (filenames like `1472__1840_0.bmp`), so neighbouring tiles land in both train and the carved-out val. Not verified; the fix would be to group the val split by source scene.
 - Value of detector fine-tuning: `notebooks/colab_detect.ipynb` compares the fine-tuned `yolo11s` with the stock `yolo11n`, which mixes fine-tuning with model size. To separate them, also run the pipeline with the stock `yolo11s-obb.pt` (`--name stock_s_detector_level2 --keep-class ship`, new classifier). The stock models have no dock class, and about 5% of test objects are docks, which costs them a few points of recall.
 - The Sentinel design note is for Sentinel-2 (optical), decided 2026-10-09; Sentinel-1 stays a Phase 5 extension.
+
+Plan agreed 2026-10-09 (the Sentinel-2 experiment). Daniel does not want to label any data. Work proceeds one lettered step per batch.
+- A. Run the current high-resolution detector and classifier on the Finnish Sentinel-2 test tiles, plus the published Finnish YOLOv8 model as the reference line. Expected: very few detections and meaningless types. Types cannot be scored there, so report the tally of predicted classes and how often a predicted class contradicts the measured size.
+- B. Downgrade ShipRSImageNet to 10 m and retrain the detector and the classifier.
+- C. Score both on the downgraded test set, which has boxes and types (favourable conditions).
+- D. Run the 10 m pipeline on the Finnish test tiles again and compare with A. This is the key real-world number.
+- E. Measurement logic (length, width, heading from the box; type plausibility). Later.
+- F. Deploy the 10 m models on a live Sentinel-2 AOI with email alerts, with or without E. AOI not chosen; Baltic waters suit the Finnish benchmark and free Danish AIS.
+
+The write-up is a separate track, independent of steps A to F and not waiting on any of them: a chronicle of the 2025 study, what was wrong and the rework. The "what I learned" sections are Daniel's to write. Venue and language not decided. Do not schedule it inside the experiment plan.
+
+Where step A stands: documentation read and annotation files inspected, no code written. Blocked on Daniel creating a free Copernicus Data Space account (dataspace.copernicus.eu); the login goes into Colab secrets, never the repo. Then build: download of the test products, cutting into chips, conversion of the boxes to the pipeline's format, scoring, a Colab notebook (inference only, T4 is enough).
+
+Finnish dataset facts (checked 2026-10-09): five GeoPackage files named by MGRS tile (34VEM, 34VEN, 34VER, 34WFT, 35VLG), one layer per acquisition date (`YYYYMMDD`), axis-aligned box polygons in the tile's UTM CRS (EPSG:32634, 32635 for 35VLG), single label `boat`. Test set is tiles 34VEN (20210714, 20220619, 20220624, 20220813; 1,339 boxes) and 34VER (20220617, 20220712, 20220826; 355 boxes). Imagery is the L1C true-colour image (TCI) from Copernicus; free no-login mirrors carry L2A, which would handicap the Finnish model. Their model takes 320 x 320 px chips upsampled to 640 x 640; use the same chips for every model. Their weights are AGPL-3.0: fine as a benchmark, not as part of the deployed monitor.
+
+Public data for this, none of it needing labelling: Finnish coast Sentinel-2 vessel boxes (zenodo.org/records/15019034, 8,367 vessels, CC BY 4.0, annotations only, imagery from Copernicus by product name, weights at huggingface.co/mayrajeo/marine-vessel-yolo, licence of the weights unchecked); IMT Atlantique/CLS Sentinel-2 ships with length and heading (zenodo.org/records/10418786, 60 images, 1,147 ships, CC BY 4.0). No public Sentinel-2 set has ship types, so classification can only be scored on downgraded ShipRSImageNet. NAIP aerial imagery (Planetary Computer, free, 0.3 to 1 m) covers US naval bases and is safe to publish as example images.
 
 `verify_legacy --shared-classes` showed the original level 3 scores were distorted by the per-split class index: with the train index the same weights score 12.73 / 10.73 / 50.73 instead of 9.64 / 10.36 / 23.09. Levels 1 and 2 do not change.
 
