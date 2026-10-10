@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import re
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -183,6 +184,64 @@ def print_source_report(rows: list[dict]) -> None:
               f"{r['images']:>7} {r['vessels']:>8} {r['named_class_vessels']:>6} {measured:>36} {r['median_box_length_px']:>7.0f}")
     print("\nrecorded: the Img_Resolution text in the annotation file. named: vessels of a ship class with a known hull")
     print("length. measured: that length divided by the box length in pixels. box px: median box length in the group.")
+
+
+# Sources that record nothing and hold no vessels of a named class: their documented nominal resolution
+NOMINAL_M = {"Airbus ship": 1.5}
+MIN_NAMED_IMAGES = 20  # images with a measurement before a source's median is trusted
+
+
+def measured_by_image(data_root, level: int = 3) -> dict[str, float]:
+    """Metres per pixel of each image that holds a vessel of a named ship class, keyed by file stem.
+
+    Per vessel: the class's hull length divided by the box length in pixels;
+    per image the median over its named vessels.
+    """
+    from ..detect.sizes import CLASS_LENGTH_M
+
+    per_image: dict[str, list[float]] = {}
+    for split in ("train", "val"):
+        path = annotation_path(data_root, split, level)
+        if not path.exists():
+            continue
+        records = coco_to_vessel_records(path)
+        for filename, label, polygon in zip(records["filename"], records["label"], records["polygon"]):
+            length_px = box_sides(polygon)[0]
+            if label in CLASS_LENGTH_M and length_px > 0:
+                per_image.setdefault(Path(filename).stem, []).append(CLASS_LENGTH_M[label] / length_px)
+    return {stem: float(np.median(values)) for stem, values in per_image.items()}
+
+
+@lru_cache(maxsize=4)
+def assigned_resolutions(data_root: str) -> dict[str, float]:
+    """The resolution to use for each image, keyed by file stem.
+
+    The recorded `Img_Resolution` is missing for half the images and wrong for
+    one source, so it is the last resort. In order: the image's own measured
+    value, held within a factor of two of its source's median; that median; the
+    recorded value; the source's nominal value. Images with none are left out.
+    """
+    sources = image_sources(data_root)
+    measured = measured_by_image(data_root)
+    by_source: dict[str, list[float]] = {}
+    for stem, value in measured.items():
+        by_source.setdefault(sources.get(stem, {}).get("source", ""), []).append(value)
+    medians = {source: float(np.median(values)) for source, values in by_source.items()
+               if len(values) >= MIN_NAMED_IMAGES}
+
+    assigned = {}
+    for stem, meta in sources.items():
+        median = medians.get(meta["source"])
+        recorded = re.fullmatch(r"[\d.]+", meta["recorded"])
+        if stem in measured and median:
+            assigned[stem] = float(np.clip(measured[stem], median / 2, median * 2))
+        elif median:
+            assigned[stem] = median
+        elif recorded and float(meta["recorded"]) > 0:
+            assigned[stem] = float(meta["recorded"])
+        elif meta["source"] in NOMINAL_M:
+            assigned[stem] = NOMINAL_M[meta["source"]]
+    return assigned
 
 
 def main(argv=None):

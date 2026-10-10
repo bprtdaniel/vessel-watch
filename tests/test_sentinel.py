@@ -124,7 +124,7 @@ def test_evaluate_tallies_the_classifier_and_saves_examples(data_root, tmp_path)
     scenes, truth = _scene()
 
     report = finland.evaluate(scenes, {"blind": lambda chips: [[] for _ in chips]},
-                              {"level1": (model.to(DEVICE), classes, cfg.crop_margin)},
+                              {"level1": (model.to(DEVICE), classes, cfg)},
                               examples_dir=tmp_path / "examples")
 
     tallies = report["classifiers"]["level1"]

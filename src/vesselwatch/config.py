@@ -34,8 +34,14 @@ class Config:
     # val split is the held-out test set and validation is carved out of train.
     val_fraction: float = 0.15      # share of train images used for validation
     split_seed: int = 0
-    crop: str = "rotated"           # "rotated" follows the oriented box, "upright" its bounding rectangle
-    crop_margin: float = 0.1        # context added on each side, as a share of the box
+    # "rotated" follows the oriented box, "upright" its bounding rectangle; both fill the crop with the
+    # vessel. "fixed" cuts a crop_window x crop_window pixel window at true scale, so size stays visible.
+    crop: str = "rotated"
+    crop_margin: float = 0.1        # rotated and upright: context added on each side, as a share of the box
+    crop_window: int = 56           # fixed: side of the window in pixels
+    # Resample every scene to this many metres per pixel before cropping (None keeps the original images)
+    resample_to: float | None = None
+    min_length_m: float = 0.0       # with resample_to: leave out vessels shorter than this
     data_root: str | None = None    # folder holding COCO_Format/ and VOC_Format/
     runs_dir: str | None = None
     cache_dir: str | None = None    # extracted crops are kept here between epochs and runs

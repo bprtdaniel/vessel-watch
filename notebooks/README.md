@@ -87,7 +87,7 @@ This is step A of the Sentinel-2 experiment.
 
 ## Step 7: resampling the dataset to 10 m and retraining
 
-This is step B of the Sentinel-2 experiment. So far only its first part exists.
+Steps B and C of the Sentinel-2 experiment: two measurements (7a, 7b) that had to come first, then the retraining (7c).
 
 | | |
 |---|---|
@@ -106,6 +106,31 @@ This is step B of the Sentinel-2 experiment. So far only its first part exists.
 | Runs | `python -m vesselwatch.data.resolution --sources` |
 | Code | [`data/resolution.py`](../src/vesselwatch/data/resolution.py), `source_report`; hull lengths in [`detect/sizes.py`](../src/vesselwatch/detect/sizes.py) |
 | Writes | Nothing |
+| Run on | 2026-10-10 |
+| Result | The dataset has six origins. FGSD (Google Earth, 1,470 images, 6,808 vessels) records no resolution and measures 0.54 m per pixel (0.25 to 0.60). HRSC (Google Earth, 819 images, 2,720 vessels) records 1.07 m but measures 0.49 m (0.42 to 0.56). xView (WorldView-3, 421 images, 4,397 vessels) records 0.3 m and has no named ship classes to check it against. The rest is 38 images: JL-1 (0.92 m), GF-2 (4 m) and Airbus (no value). |
+
+| | |
+|---|---|
+| Notebook | [`step_07_downgrade_to_10m/07c_retrain_at_10m.ipynb`](step_07_downgrade_to_10m/07c_retrain_at_10m.ipynb) |
+| Question | How well can vessels be detected and classified at 10 m, when the models are trained on ShipRSImageNet resampled to that resolution? |
+| Runs | `python -m vesselwatch.study --configs configs/crops_10m`, then `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_obb_10m.yaml` |
+| Code | Resolution per image: `assigned_resolutions` in [`data/resolution.py`](../src/vesselwatch/data/resolution.py). Shrinking images and boxes: [`data/resample.py`](../src/vesselwatch/data/resample.py). Fixed-scale crops: `fixed_crop` in [`data/crops.py`](../src/vesselwatch/data/crops.py). Canvases for the detector: [`detect/canvases.py`](../src/vesselwatch/detect/canvases.py). Training and scoring are the same code as steps 4 and 5. Configs: [`configs/crops_10m/`](../configs/crops_10m/), [`configs/detect/yolo11s_obb_10m.yaml`](../configs/detect/yolo11s_obb_10m.yaml) |
+| Writes | `crops10m_level{1,2,3}_{net,net_max,resnet101}/`, `study_summary_10m.json` and `yolo11s_obb_10m/` in `5.Projects/runs` |
+| Run on | not run yet |
+| Result | - |
+
+## Step 8: the 10 m models on real Sentinel-2 imagery
+
+This is step D of the Sentinel-2 experiment.
+
+| | |
+|---|---|
+| Notebook | [`step_08_sentinel2_10m_models/08_10m_models_on_sentinel2.ipynb`](step_08_sentinel2_10m_models/08_10m_models_on_sentinel2.ipynb) |
+| Question | How much better do the models retrained at 10 m do on real Sentinel-2 scenes than the high-resolution models of step 6, and how far are they from a model trained on real Sentinel-2? |
+| Needs | The runs of step 7c on Drive |
+| Runs | `python -m vesselwatch.detect.finland --name step_d ...` with three detectors: retrained at 10 m, high-resolution, Finnish reference |
+| Code | [`detect/finland.py`](../src/vesselwatch/detect/finland.py), as in step 6 |
+| Writes | `sentinel2_step_d.json` and `sentinel2_step_d_examples/` in `5.Projects/runs` |
 | Run on | not run yet |
 | Result | - |
 

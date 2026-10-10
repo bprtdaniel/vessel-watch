@@ -31,7 +31,7 @@ import torch
 from PIL import Image, ImageDraw
 
 from ..config import RUNS_ENV, load_config
-from ..data import crop_eval_transform, rotated_crop
+from ..data import crop_transforms, crop_vessel
 from ..monitor.cdse import fetch_true_colour
 from ..monitor.tiles import chip_origins, cut_chip, load_scene
 from .pipeline import Detection, classify_crops, load_classifier
@@ -216,10 +216,15 @@ def finish(score: dict) -> dict:
 # --- classification -----------------------------------------------------------------------------
 
 def classify_boxes(img, boxes: np.ndarray, classifier, device) -> list[str]:
-    """Class the classifier assigns to each (x0, y0, x1, y1) box of a scene."""
-    model, classes, margin = classifier
-    crops = [rotated_crop(img, (x0, y0, x0, y1, x1, y1, x1, y0), margin) for x0, y0, x1, y1 in boxes]
-    return [classes[i] for i in classify_crops(model, crops, crop_eval_transform(), device)]
+    """Class the classifier assigns to each (x0, y0, x1, y1) box of a scene.
+
+    `classifier` is (model, class list, config); the config says how its
+    training crops were cut, and the same is done here.
+    """
+    model, classes, cfg = classifier
+    crops = [crop_vessel(img, (x0, y0, x0, y1, x1, y1, x1, y0), cfg.crop, cfg.crop_margin, cfg.crop_window)
+             for x0, y0, x1, y1 in boxes]
+    return [classes[i] for i in classify_crops(model, crops, crop_transforms(cfg.crop)[1], device)]
 
 
 def tally(labels, lengths_m) -> dict:
@@ -268,7 +273,7 @@ def evaluate(scenes, detectors: dict, classifiers: dict | None = None, examples_
     `scenes` yields (name, image, truth boxes in pixels). `detectors` maps a
     name to a chip detector; the first one is the pipeline's own detector, and
     its detections are what the classifiers are run on, next to the true boxes.
-    `classifiers` maps a name to (model, class list, crop margin).
+    `classifiers` maps a name to (model, class list, config).
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     classifiers = classifiers or {}
@@ -355,7 +360,7 @@ def main(argv=None):
         config, weights = spec.split("=", 1)
         cfg = load_config(config, runs_dir=args.runs_dir)
         model, classes = load_classifier(cfg, weights, device)
-        classifiers[cfg.run_name] = (model, classes, cfg.crop_margin)
+        classifiers[cfg.run_name] = (model, classes, cfg)
 
     scenes = load_test_scenes(data_dir, TEST_SCENES[:args.scenes] if args.scenes else TEST_SCENES)
     report = evaluate(scenes, detectors, classifiers, examples_dir=runs / f"sentinel2_{args.name}_examples")

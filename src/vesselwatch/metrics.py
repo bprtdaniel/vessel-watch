@@ -12,6 +12,8 @@ from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 NON_VESSEL = ("Dock",)  # labelled in the dataset but not a vessel
 # COCO object size buckets, by box area in pixels
 SIZE_BUCKETS = (("small", 0, 32 ** 2), ("medium", 32 ** 2, 96 ** 2), ("large", 96 ** 2, float("inf")))
+# By hull length in metres, where the image resolution is known
+LENGTH_BUCKETS = (("under 50 m", 0, 50), ("50 to 150 m", 50, 150), ("over 150 m", 150, float("inf")))
 
 
 def accuracy(y_true, y_pred) -> float:
@@ -25,11 +27,12 @@ def macro_f1(y_true, y_pred, num_classes: int) -> float:
     return 100 * float(f1[support > 0].mean()) if (support > 0).any() else float("nan")
 
 
-def classification_metrics(y_true, y_pred, classes, train_labels=None, areas=None) -> dict:
+def classification_metrics(y_true, y_pred, classes, train_labels=None, areas=None, lengths_m=None) -> dict:
     """Full report for one split.
 
     `train_labels` adds the baseline of always predicting the most frequent
-    train class; `areas` (box area per sample, in pixels) adds accuracy by size.
+    train class; `areas` (box area per sample, in pixels) adds accuracy by
+    size, `lengths_m` (hull length per sample) accuracy by length.
     """
     y_true, y_pred = np.asarray(y_true), np.asarray(y_pred)
     n = len(classes)
@@ -68,6 +71,13 @@ def classification_metrics(y_true, y_pred, classes, train_labels=None, areas=Non
         for name, low, high in SIZE_BUCKETS:
             mask = (areas >= low) & (areas < high)
             report["by_size"][name] = {"n": int(mask.sum()), "accuracy": accuracy(y_true[mask], y_pred[mask])}
+
+    if lengths_m is not None:
+        lengths_m = np.asarray(lengths_m)
+        report["by_length"] = {}
+        for name, low, high in LENGTH_BUCKETS:
+            mask = (lengths_m >= low) & (lengths_m < high)
+            report["by_length"][name] = {"n": int(mask.sum()), "accuracy": accuracy(y_true[mask], y_pred[mask])}
 
     report["per_class"] = [
         {"class": classes[i], "support": int(support[i]), "precision": 100 * float(precision[i]),

@@ -47,4 +47,33 @@ def upright_crop(img: Image.Image, polygon, margin: float = 0.0) -> Image.Image:
     return img.crop((x1, y1, max(x2, x1 + MIN_SIDE), max(y2, y1 + MIN_SIDE)))
 
 
+def fixed_crop(img: Image.Image, polygon, window: int) -> Image.Image:
+    """A window x window pixel crop centred on the box and turned so the vessel lies horizontally.
+
+    Unlike `rotated_crop` nothing is rescaled: a longer vessel fills more of
+    the window. At coarse resolution size is most of what tells vessels apart.
+    """
+    pts = _corners(polygon, 0.0)
+    centre = pts.mean(axis=0)
+    first, second = pts[1] - pts[0], pts[2] - pts[1]
+    along = first if np.linalg.norm(first) >= np.linalg.norm(second) else second
+    norm = np.linalg.norm(along)
+    along = along / norm if norm > 0 else np.array([1.0, 0.0])
+    across = np.array([-along[1], along[0]])
+    half = window / 2
+    # QUAD takes the source corners as upper left, lower left, lower right, upper right
+    quad = [centre - along * half - across * half, centre - along * half + across * half,
+            centre + along * half + across * half, centre + along * half - across * half]
+    return img.transform((window, window), Image.Transform.QUAD, data=tuple(np.concatenate(quad)),
+                         resample=Image.Resampling.BILINEAR)
+
+
 CROPPERS = {"rotated": rotated_crop, "upright": upright_crop}
+CROP_MODES = (*CROPPERS, "fixed")
+
+
+def crop_vessel(img: Image.Image, polygon, crop: str, margin: float = 0.0, window: int = 56) -> Image.Image:
+    """Cut one vessel out: `rotated` and `upright` scale to the box plus margin, `fixed` uses a fixed window."""
+    if crop == "fixed":
+        return fixed_crop(img, polygon, window)
+    return CROPPERS[crop](img, polygon, margin)

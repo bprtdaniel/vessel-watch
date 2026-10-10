@@ -1,0 +1,11 @@
+# YOLO11-OBB (small), pretrained on DOTA, fine-tuned on ShipRSImageNet resampled to 10 m per pixel
+name: yolo11s_obb_10m
+weights: yolo11s-obb.pt
+level: 0
+epochs: 100
+imgsz: 640
+batch: 32
+resample_to: 10
+min_length_m: 20
+canvas: 320
+passes: 20

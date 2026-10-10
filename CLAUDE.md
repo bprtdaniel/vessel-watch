@@ -6,13 +6,13 @@ Vessel detection and classification from satellite imagery. Two tracks, one pack
 - Track B: scheduled Sentinel-2 monitor over an AOI (Copernicus Data Space), emails on detections.
 
 ## Layout
-- `src/vesselwatch/data/`       COCO parsing, vessel crops, datasets, transforms, splits
+- `src/vesselwatch/data/`       COCO parsing, vessel crops, datasets, transforms, splits, image resolutions and resampling
 - `src/vesselwatch/models/`     small_cnn, vgg_style, resnet, registry (`build_model(name, num_classes)`)
 - `src/vesselwatch/train.py`    single training loop, config-driven
 - `src/vesselwatch/evaluate.py` scores weights on a split, writes metrics and confusion matrix
 - `src/vesselwatch/metrics.py`  macro-F1, per-class, by-size, majority baseline
 - `src/vesselwatch/study.py`    trains and scores every config in a folder, resumable
-- `src/vesselwatch/detect/`     YOLO-OBB dataset export and training wrapper, two-stage pipeline with per-stage scoring
+- `src/vesselwatch/detect/`     YOLO-OBB dataset export (scenes, or canvases at a coarse resolution) and training wrapper, two-stage pipeline with per-stage scoring, Sentinel-2 benchmark
 - `src/vesselwatch/monitor/`    CDSE search/download (`cdse.py`), tiling (`tiles.py`); inference, state and email not built
 - `configs/`                    one YAML per experiment
 - `notebooks/`                  Colab launchers, one folder per step (`step_NN_name/NN_what_it_does.ipynb`); `notebooks/README.md` is the guide
@@ -25,7 +25,7 @@ Most of this layout does not exist yet; see Status.
 ## Commands
 - `python -m vesselwatch.train --config configs/crops/level1_resnet101.yaml`
 - `python -m vesselwatch.evaluate --config configs/crops/level1_resnet101.yaml --weights <file> --split val|test`
-- `python -m vesselwatch.study --configs configs/crops` runs all nine crop experiments, skipping finished ones
+- `python -m vesselwatch.study --configs configs/crops` runs all nine crop experiments, skipping finished ones (`configs/crops_10m` with `--summary-name study_summary_10m.json` for the 10 m study)
 - `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_obb.yaml` exports the dataset, trains the detector, scores it once on test (needs the `detect` extra)
 - `python -m vesselwatch.detect.pipeline --name <name> --detector <pt> --classifier-config <yaml> --classifier-weights <pt>` detect → crop → classify on the test split
 - `python -m vesselwatch.detect.finland --name <name> --data-dir <folder> --detector NAME=<pt> --reference --classifier <yaml>=<pt>` scores detectors and tallies classifiers on the Finnish Sentinel-2 test scenes (needs `CDSE_USERNAME` / `CDSE_PASSWORD` for the first download)
@@ -89,7 +89,12 @@ The write-up is a separate track, independent of steps A to F and not waiting on
 
 Step A result (Colab, 2026-10-10, `5.Projects/runs/sentinel2_step_a.json`; seven Finnish test scenes, 1,694 labelled vessels, conf 0.25): the high-resolution detector found 5 vessels (0.3%), all with boxes over 100 m, and 0.6% of its 797 detections hit a vessel. The Finnish reference found 90.1% (86.5% at IoU 0.5; 83% of boxes under 50 m, 95% of 50 to 100 m, 280 of 281 over 100 m), with 54.1% of its 2,822 detections hitting a vessel. Classifiers on the labelled boxes: level 1 said Merchant for all 1,694; level 3 said Motorboat 62% and Sailboat 38%. That is a near-constant answer and cannot be scored, but it is not absurd, since these are small boats. The size-contradiction count was 0 of 16. The Copernicus download path works. Next: step B.
 
-Step B, measurement 07a (Colab, 2026-10-10): `Img_Resolution` is recorded for only 1,257 of 2,748 labelled images (0.30 m: 421 images / 4,397 vessels; 1.07 m: 819 / 2,720; 0.92 m: 9; 4.00 m: 8), leaving 6,829 of 13,963 vessels without one. The recorded values also give impossible lengths (median warship 355 m, longest vessel 1,060 m), so at least one group's value is wrong; the 1.07 m group is the suspect. Do not resample by `Img_Resolution` as it stands. Notebook 07b (`python -m vesselwatch.data.resolution --sources`, written, not yet run) groups images by origin and measures the true resolution from vessels of named classes with known hull lengths. The resampling design waits on its output: a resolution per source group, how to turn small scenes into 320 px training chips, the minimum vessel length to keep, and which label levels to retrain.
+Step B, measurement 07a (Colab, 2026-10-10): `Img_Resolution` is recorded for only 1,257 of 2,748 labelled images (0.30 m: 421 images / 4,397 vessels; 1.07 m: 819 / 2,720; 0.92 m: 9; 4.00 m: 8), leaving 6,829 of 13,963 vessels without one. The recorded values also give impossible lengths (median warship 355 m, longest vessel 1,060 m), so at least one group's value is wrong; the 1.07 m group is the suspect. Do not resample by `Img_Resolution` as it stands. Measurement 07b (Colab, 2026-10-10, `python -m vesselwatch.data.resolution --sources`) grouped the images by origin and measured the true resolution from vessels of named classes with known hull lengths:
+- FGSD, Google Earth: 1,470 images, 6,808 vessels, nothing recorded; measured median 0.54 m/px (10% 0.25, 90% 0.60) from 1,584 named vessels. The spread means zoom levels vary within the source.
+- HRSC, Google Earth: 819 images, 2,720 vessels, recorded 1.07; measured 0.49 (0.42 to 0.56) from 1,267 named vessels. The recorded value is wrong by a factor of about 2.2.
+- xView, WorldView-3: 421 images, 4,397 vessels, recorded 0.3; no named classes to check, median box 44 px, consistent with small boats at 0.3 m. Trusted.
+- JL-1 (0.92, 9 images), GF-2 (4, 8 images), Airbus ship (21 images, nothing recorded; that source is nominally 1.5 m). 38 vessels in total.
+So resample with a per-image measured resolution where an image holds a named vessel, the source median otherwise, and the recorded value only for xView, JL-1 and GF-2. At 10 m every scene is roughly 28 to 60 px, so training images for the detector have to be composed from several scenes at true scale. Daniel agreed the retraining design on 2026-10-10 and it is built (not yet run): area-averaged resampling per image (`data/resample.py`, `assigned_resolutions`), vessels under 20 m left unlabelled, classifiers on fixed-scale 56 px crops (`crop: fixed`, so that size stays visible; `configs/crops_10m/`, runs named `crops10m_*`), detector on 320 px canvases composed from many resampled scenes (`detect/canvases.py`, `configs/detect/yolo11s_obb_10m.yaml`, run `yolo11s_obb_10m`). Notebooks: `step_07_downgrade_to_10m/07c_retrain_at_10m.ipynb` (steps B and C, needs a GPU) and `step_08_sentinel2_10m_models/08_10m_models_on_sentinel2.ipynb` (step D). Step C scores classifier and detector separately on the resampled test split; the two are not chained there. Expectation given to Daniel: a clear drop from the high-resolution accuracies, and on the Finnish scenes only a modest rise from 0.3%, because the resampled data is mostly large moored ships and the Finnish vessels are small moving boats.
 
 What the Finnish imagery looks like (inspected 2026-10-10): the labelled vessels are mostly small boats of a few bright pixels, often with a wake; the boxes include the wake, so even the largest boxes (150 to 280 m) are small fast boats, not large ships. The benchmark therefore measures small-boat and wake detection, which differs from both ShipRSImageNet (mostly moored ships, no wakes) and Daniel's eventual interest in large vessels. Report recall by box length. The IMT Atlantique/CLS set (60 scenes with image, land mask and per-ship CSV, downloaded but not yet inspected) may be the better match for large ships.
 

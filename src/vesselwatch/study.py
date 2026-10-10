@@ -36,7 +36,8 @@ def summary_row(cfg, val: dict, test: dict) -> dict:
     return row
 
 
-def run_study(configs_dir, data_root=None, runs_dir=None, epochs=None, num_workers=None) -> list[dict]:
+def run_study(configs_dir, data_root=None, runs_dir=None, epochs=None, num_workers=None,
+              summary_name: str = SUMMARY_FILE) -> list[dict]:
     rows = []
     for path in sorted(Path(configs_dir).glob("*.yaml")):
         cfg = load_config(path, data_root=data_root, runs_dir=runs_dir, epochs=epochs, num_workers=num_workers)
@@ -54,7 +55,7 @@ def run_study(configs_dir, data_root=None, runs_dir=None, epochs=None, num_worke
         test = json.loads((run_dir / "metrics_test.json").read_text())
         rows.append(summary_row(cfg, val, test))
         # Rewritten after every run, so an interrupted session keeps what it finished
-        with open(run_dir.parent / SUMMARY_FILE, "w") as f:
+        with open(run_dir.parent / summary_name, "w") as f:
             json.dump(rows, f, indent=2)
     return rows
 
@@ -75,11 +76,13 @@ def main(argv=None):
     parser.add_argument("--runs-dir")
     parser.add_argument("--epochs", type=int)
     parser.add_argument("--num-workers", type=int)
+    parser.add_argument("--summary-name", default=SUMMARY_FILE,
+                        help="file name of the summary in the runs folder; give each study its own")
     args = parser.parse_args(argv)
 
-    rows = run_study(args.configs, args.data_root, args.runs_dir, args.epochs, args.num_workers)
+    rows = run_study(args.configs, args.data_root, args.runs_dir, args.epochs, args.num_workers, args.summary_name)
     print_summary(rows)
-    print(f"Also written to {SUMMARY_FILE} in the runs folder.")
+    print(f"Also written to {args.summary_name} in the runs folder.")
 
 
 if __name__ == "__main__":

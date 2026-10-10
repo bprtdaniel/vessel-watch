@@ -51,6 +51,17 @@ def crop_eval_transform():
     ])
 
 
+def fixed_train_transform():
+    """Fixed-scale crops are square already: enlarge by a constant factor, flips only."""
+    return transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(0.5),
+        transforms.RandomVerticalFlip(0.5),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ])
+
+
 def squash_eval_transform():
     """Stretch the crop to 224 x 224 without padding, as the first two-stage prototype did."""
     return transforms.Compose([

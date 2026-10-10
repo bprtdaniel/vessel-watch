@@ -17,6 +17,7 @@ from pathlib import Path
 import yaml
 
 from ..config import CACHE_ENV, DATA_ENV, RUNS_ENV
+from .canvases import export_canvases
 from .export import export_yolo_obb
 
 
@@ -31,6 +32,12 @@ class DetectConfig:
     seed: int = 0
     val_fraction: float = 0.15       # keep equal to the classification study, so the splits match
     split_seed: int = 0
+    # Train at a coarser resolution: scenes are resampled to this many metres per pixel and composed
+    # into canvas x canvas pixel images, see detect/canvases.py. None trains on the original scenes.
+    resample_to: float | None = None
+    min_length_m: float = 20.0       # with resample_to: vessels shorter than this are not labelled
+    canvas: int = 320
+    passes: int = 20                 # passes over the train scenes when composing canvases
     data_root: str | None = None
     runs_dir: str | None = None
     cache_dir: str | None = None
@@ -49,7 +56,19 @@ class DetectConfig:
 
     def dataset_dir(self) -> Path:
         base = self.cache_dir or os.environ.get(CACHE_ENV) or self.runs_root()
-        return Path(base) / f"yolo_obb_level{self.level}_split{self.split_seed}"
+        name = f"yolo_obb_level{self.level}_split{self.split_seed}"
+        if self.resample_to:
+            name += f"_at_{self.resample_to:g}m_canvas{self.canvas}_passes{self.passes}"
+        return Path(base) / name
+
+    def export_dataset(self) -> Path:
+        """Write the training data in YOLO's layout and return its dataset.yaml."""
+        if self.resample_to:
+            return export_canvases(self.resolved_data_root(), self.dataset_dir(), self.resample_to, self.level,
+                                   self.val_fraction, self.split_seed, self.min_length_m, self.canvas,
+                                   self.passes, self.seed)
+        return export_yolo_obb(self.resolved_data_root(), self.dataset_dir(), self.level,
+                               self.val_fraction, self.split_seed)
 
 
 def load_detect_config(path, **overrides) -> DetectConfig:
@@ -90,8 +109,7 @@ def train_detector(cfg: DetectConfig) -> dict:
         print(f"{cfg.name}: already scored on test, skipping")
         return json.loads(metrics_file.read_text())
 
-    dataset_yaml = export_yolo_obb(cfg.resolved_data_root(), cfg.dataset_dir(), cfg.level,
-                                   cfg.val_fraction, cfg.split_seed)
+    dataset_yaml = cfg.export_dataset()
     last = run_dir / "weights" / "last.pt"
     if epochs_done(run_dir) >= cfg.epochs:
         print(f"{cfg.name}: training already finished, scoring only")

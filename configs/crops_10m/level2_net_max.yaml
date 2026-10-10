@@ -1,0 +1,12 @@
+# Vessel crops at 10 m per pixel, fixed scale: VGG-style CNN trained from scratch, level 2
+name: crops10m_level2_net_max
+level: 2
+model: net_max
+optimizer: adam
+lr: 0.001
+epochs: 30
+batch_size: 32
+resample_to: 10
+min_length_m: 20
+crop: fixed
+crop_window: 56

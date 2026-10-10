@@ -48,7 +48,8 @@ def score(cfg: Config, weights, split: str = "val") -> dict:
     if cfg.per_split_classes:
         return {"split": split, "loss": loss, "n": len(y_true), "accuracy": acc}
     report = classification_metrics(y_true, y_pred, classes, train_labels=train_ds.labels,
-                                    areas=getattr(eval_ds, "areas", None))
+                                    areas=getattr(eval_ds, "areas", None),
+                                    lengths_m=getattr(eval_ds, "lengths_m", None))
     return {"split": split, "loss": loss, **report}
 
 

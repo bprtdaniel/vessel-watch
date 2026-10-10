@@ -8,7 +8,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from .crops import CROPPERS
+from .crops import CROP_MODES, crop_vessel
+from .resample import resample_image
 
 
 def _label_indices(labels, class_to_idx) -> list[int]:
@@ -48,24 +49,30 @@ class ShipImageDataset(Dataset):
 class VesselCropDataset(Dataset):
     """One sample per annotated vessel, cut out of its scene.
 
-    `records` comes from `coco_to_vessel_records`. `classes` is the shared class
-    list; it is never derived from the records of a single split. With a
-    `cache_dir` each crop is written to disk the first time it is used.
+    `records` comes from `coco_to_vessel_records`, or from `resampled_records`
+    for a coarser resolution: those carry a `factor` by which each scene is
+    shrunk before the vessel is cut out. `classes` is the shared class list; it
+    is never derived from the records of a single split. With a `cache_dir`
+    each crop is written to disk the first time it is used.
     """
 
-    def __init__(self, records, image_dir, classes, transform=None, crop="rotated", margin=0.1, cache_dir=None):
-        if crop not in CROPPERS:
+    def __init__(self, records, image_dir, classes, transform=None, crop="rotated", margin=0.1, cache_dir=None,
+                 window=56):
+        if crop not in CROP_MODES:
             raise ValueError(f"Unknown crop mode '{crop}'")
         self.records = records.reset_index(drop=True)
         self.image_dir = image_dir
         self.transform = transform
         self.crop = crop
         self.margin = margin
-        self.cache_dir = Path(cache_dir) / f"{crop}_m{margin}" if cache_dir else None
+        self.window = window
+        variant = f"fixed_w{window}" if crop == "fixed" else f"{crop}_m{margin}"
+        self.cache_dir = Path(cache_dir) / variant if cache_dir else None
         self.classes = list(classes)
         self.class_to_idx = {c: i for i, c in enumerate(self.classes)}
         self.labels = _label_indices(self.records["label"], self.class_to_idx)
         self.areas = self.records["area"].tolist()
+        self.lengths_m = self.records["length_m"].tolist() if "length_m" in self.records else None
 
     def __len__(self):
         return len(self.records)
@@ -82,7 +89,9 @@ class VesselCropDataset(Dataset):
             return Image.open(cached).convert("RGB")
 
         img = Image.open(os.path.join(self.image_dir, row["filename"])).convert("RGB")
-        crop = CROPPERS[self.crop](img, row["polygon"], self.margin)
+        if "factor" in row:
+            img = resample_image(img, row["factor"])
+        crop = crop_vessel(img, row["polygon"], self.crop, self.margin, self.window)
         if cached is not None:
             cached.parent.mkdir(parents=True, exist_ok=True)
             # Write then rename, so a loader worker never reads a half-written file

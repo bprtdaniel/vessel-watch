@@ -24,13 +24,14 @@ from .data import (
     category_names,
     coco_to_image_labels,
     coco_to_vessel_records,
-    crop_eval_transform,
-    crop_train_transform,
+    crop_transforms,
     eval_transform,
     image_dir,
     legacy_train_transform,
     split_images,
 )
+from .data.resample import resampled_records
+from .data.resolution import assigned_resolutions
 from .metrics import macro_f1
 from .models import build_model
 
@@ -63,16 +64,26 @@ def _crop_datasets(cfg: Config) -> dict:
     train_json = annotation_path(root, "train", cfg.level)
     classes = category_names(train_json)
 
+    # The split is made on all annotated images, so it is the same with and without resampling
     records = coco_to_vessel_records(train_json)
     train_ids, val_ids = split_images(records["image_id"], cfg.val_fraction, cfg.split_seed)
+    test_records = coco_to_vessel_records(annotation_path(root, "val", cfg.level))
+    cache_dir = cfg.resolved_cache_dir()
+    if cfg.resample_to:
+        resolutions = assigned_resolutions(str(root))
+        records = resampled_records(records, resolutions, cfg.resample_to, cfg.min_length_m)
+        test_records = resampled_records(test_records, resolutions, cfg.resample_to, cfg.min_length_m)
+        cache_dir = cache_dir / f"at_{cfg.resample_to:g}m" if cache_dir else None
+
+    train_transform, eval_transform_ = crop_transforms(cfg.crop)
     splits = {
-        "train": (records[records["image_id"].isin(train_ids)], crop_train_transform()),
-        "val": (records[records["image_id"].isin(val_ids)], crop_eval_transform()),
-        "test": (coco_to_vessel_records(annotation_path(root, "val", cfg.level)), crop_eval_transform()),
+        "train": (records[records["image_id"].isin(train_ids)], train_transform),
+        "val": (records[records["image_id"].isin(val_ids)], eval_transform_),
+        "test": (test_records, eval_transform_),
     }
     return {
         split: VesselCropDataset(split_records, image_dir(root), classes, transform, crop=cfg.crop,
-                                 margin=cfg.crop_margin, cache_dir=cfg.resolved_cache_dir())
+                                 margin=cfg.crop_margin, cache_dir=cache_dir, window=cfg.crop_window)
         for split, (split_records, transform) in splits.items()
     }
 
