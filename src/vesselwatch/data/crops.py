@@ -16,6 +16,13 @@ def _corners(polygon, margin: float) -> np.ndarray:
     return centre + (pts - centre) * (1 + 2 * margin)
 
 
+def box_sides(polygon) -> tuple[float, float]:
+    """Length of the long and of the short side of an oriented box, in pixels."""
+    pts = _corners(polygon, 0.0)
+    a, b = float(np.linalg.norm(pts[1] - pts[0])), float(np.linalg.norm(pts[2] - pts[1]))
+    return max(a, b), min(a, b)
+
+
 def rotated_crop(img: Image.Image, polygon, margin: float = 0.0) -> Image.Image:
     """Crop along the oriented box, so the vessel lies horizontally and fills the crop.
 

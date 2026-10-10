@@ -15,7 +15,7 @@ Vessel detection and classification from satellite imagery. Two tracks, one pack
 - `src/vesselwatch/detect/`     YOLO-OBB dataset export and training wrapper, two-stage pipeline with per-stage scoring
 - `src/vesselwatch/monitor/`    CDSE search/download (`cdse.py`), tiling (`tiles.py`); inference, state and email not built
 - `configs/`                    one YAML per experiment
-- `notebooks/`                  thin Colab launchers only, no logic
+- `notebooks/`                  Colab launchers, one folder per step (`step_NN_name/NN_what_it_does.ipynb`); `notebooks/README.md` is the guide
 - `legacy/`                     original Colab exports, read-only reference
 - `docs/experiments/`           parked ideas, one file each; not roadmap work until Daniel says so
 - `data/`, `runs/`              git-ignored
@@ -29,6 +29,7 @@ Most of this layout does not exist yet; see Status.
 - `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_obb.yaml` exports the dataset, trains the detector, scores it once on test (needs the `detect` extra)
 - `python -m vesselwatch.detect.pipeline --name <name> --detector <pt> --classifier-config <yaml> --classifier-weights <pt>` detect → crop → classify on the test split
 - `python -m vesselwatch.detect.finland --name <name> --data-dir <folder> --detector NAME=<pt> --reference --classifier <yaml>=<pt>` scores detectors and tallies classifiers on the Finnish Sentinel-2 test scenes (needs `CDSE_USERNAME` / `CDSE_PASSWORD` for the first download)
+- `python -m vesselwatch.data.resolution --target 10` prints the images' ground resolutions, scene sizes at the target resolution and vessel lengths in metres
 - `python -m vesselwatch.inventory <models folder>` identifies saved weights/histories by content
 - `python -m vesselwatch.verify_legacy --models-dir <models folder>` scores the nine original weights against the paper (`--shared-classes` rescored with the train class index)
 - `python -m vesselwatch.monitor.run --aoi configs/aoi/<name>.geojson` (not built yet)
@@ -44,8 +45,9 @@ Data and output folders come from `data_root` / `runs_dir` in the config, or the
 - Keep a thin `Predictor` interface so the deployed model can be swapped later.
 - No secrets in the repo. CDSE and SMTP credentials come from environment variables / GitHub secrets.
 - Do not claim fine-grained classes on Sentinel-2 output; 10 m supports detection and size class only.
-- Training runs on Colab via `notebooks/colab_study.ipynb` (all runs) or `notebooks/colab_train.ipynb` (one run); the dataset and weights live on Google Drive (`5.Projects/Data/ShipRSImageNet_V1`, `5.Projects/models`), never in the repo. Locally only a small sample exists for tests and smoke runs.
+- Training runs on Colab via `notebooks/step_04_classifier_study/04a_train_all_classifiers.ipynb` (all runs) or `04b_train_single_classifier.ipynb` (one run); the dataset and weights live on Google Drive (`5.Projects/Data/ShipRSImageNet_V1`, `5.Projects/models`), never in the repo. Locally only a small sample exists for tests and smoke runs.
 - `legacy/` is reference only. Do not edit it; port code out of it.
+- Everything Daniel runs on Colab exists as a file under `notebooks/`, in a folder for its step, with a name that says what it does. He does not run them locally; he reads them to follow what happened. That includes one-off cells: save them as a notebook instead of only pasting them in chat. Each new step gets an entry in `notebooks/README.md` (question, command, code that does the work, what it writes, date run, result), updated once it has run.
 - Work proceeds in batches of roadmap steps agreed with Daniel, stopping for a go-ahead after each batch and before each Colab session.
 
 ## Known defects in the legacy code (to fix while porting)
@@ -72,7 +74,7 @@ Detector and pipeline results (Colab, 2026-10-09, files in `5.Projects/runs/yolo
 Open questions from that run:
 - Net_Max trained unstably (val accuracy swinging between epochs, still underfitting at epoch 30). Its numbers reflect the recipe; a rerun with a lower learning rate or more epochs is undecided.
 - Val ran 6 to 7 points above test at L2 and L3. Suspected cause: images are tiles of larger scenes (filenames like `1472__1840_0.bmp`), so neighbouring tiles land in both train and the carved-out val. Not verified; the fix would be to group the val split by source scene.
-- Value of detector fine-tuning: `notebooks/colab_detect.ipynb` compares the fine-tuned `yolo11s` with the stock `yolo11n`, which mixes fine-tuning with model size. To separate them, also run the pipeline with the stock `yolo11s-obb.pt` (`--name stock_s_detector_level2 --keep-class ship`, new classifier). The stock models have no dock class, and about 5% of test objects are docks, which costs them a few points of recall.
+- Value of detector fine-tuning: step 5a compares the fine-tuned `yolo11s` with the stock `yolo11n`, which mixes fine-tuning with model size. To separate them, run `notebooks/step_05_detector_and_pipeline/05c_stock_small_detector_comparison.ipynb` (not run yet). The stock models have no dock class, and about 5% of test objects are docks, which costs them a few points of recall.
 - The Sentinel design note is for Sentinel-2 (optical), decided 2026-10-09; Sentinel-1 stays a Phase 5 extension.
 
 Plan agreed 2026-10-09 (the Sentinel-2 experiment). Daniel does not want to label any data. Work proceeds one lettered step per batch.
@@ -85,7 +87,7 @@ Plan agreed 2026-10-09 (the Sentinel-2 experiment). Daniel does not want to labe
 
 The write-up is a separate track, independent of steps A to F and not waiting on any of them: a chronicle of the 2025 study, what was wrong and the rework. The "what I learned" sections are Daniel's to write. Venue and language not decided. Do not schedule it inside the experiment plan.
 
-Where step A stands (2026-10-10): code and tests written (`detect/finland.py`, `detect/sizes.py`, `monitor/cdse.py`, `monitor/tiles.py`, `notebooks/colab_sentinel2.ipynb`), not yet run on Colab. Daniel has a Copernicus account; the login goes into Colab secrets (`CDSE_USERNAME`, `CDSE_PASSWORD`), never the repo. A local trial on a 12.8 km window of scene 34VEN 20220813, with L2A imagery from a free mirror: the Finnish reference found 29 of 45 vessels with no false alarms (all 13 with boxes over 100 m, 6 of 14 under 50 m); the stock DOTA detector found none. The real download path from Copernicus is untested until the notebook runs.
+Step A result (Colab, 2026-10-10, `5.Projects/runs/sentinel2_step_a.json`; seven Finnish test scenes, 1,694 labelled vessels, conf 0.25): the high-resolution detector found 5 vessels (0.3%), all with boxes over 100 m, and 0.6% of its 797 detections hit a vessel. The Finnish reference found 90.1% (86.5% at IoU 0.5; 83% of boxes under 50 m, 95% of 50 to 100 m, 280 of 281 over 100 m), with 54.1% of its 2,822 detections hitting a vessel. Classifiers on the labelled boxes: level 1 said Merchant for all 1,694; level 3 said Motorboat 62% and Sailboat 38%. That is a near-constant answer and cannot be scored, but it is not absurd, since these are small boats. The size-contradiction count was 0 of 16. The Copernicus download path works. Next: step B, starting with the measurement in `notebooks/step_07_downgrade_to_10m/07a_measure_resolution_and_vessel_sizes.ipynb` (written, not yet run). Its output decides the design of the resampling: how to turn scenes that shrink to a few dozen pixels into 320 px training chips, the minimum vessel length to keep, and which label levels are worth retraining.
 
 What the Finnish imagery looks like (inspected 2026-10-10): the labelled vessels are mostly small boats of a few bright pixels, often with a wake; the boxes include the wake, so even the largest boxes (150 to 280 m) are small fast boats, not large ships. The benchmark therefore measures small-boat and wake detection, which differs from both ShipRSImageNet (mostly moored ships, no wakes) and Daniel's eventual interest in large vessels. Report recall by box length. The IMT Atlantique/CLS set (60 scenes with image, land mask and per-ship CSV, downloaded but not yet inspected) may be the better match for large ships.
 

@@ -139,7 +139,7 @@ python -m vesselwatch.study --configs configs/crops    # all nine runs, each sco
 
 `configs/crops/` holds the corrected experiments: one sample per annotated vessel, cut out along its oriented box. The dataset's test labels are not public, so its val split serves as the held-out test set and validation is carved out of train by image. `configs/legacy/` reproduces the original study.
 
-Full training runs on Google Colab with the data on Google Drive, through [`notebooks/colab_study.ipynb`](notebooks/colab_study.ipynb) for the classifiers and [`notebooks/colab_detect.ipynb`](notebooks/colab_detect.ipynb) for the detector and the two-stage pipeline (`pip install -e ".[detect]"` to run those locally).
+Full training runs on Google Colab with the data on Google Drive. The notebooks are in [`notebooks/`](notebooks/), one folder per step in the order they were run; [`notebooks/README.md`](notebooks/README.md) says for each what it does, which code it calls and what came out. To run the detector and pipeline locally, install with `pip install -e ".[detect]"`.
 
 ## Reference
 

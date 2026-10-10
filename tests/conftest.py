@@ -22,6 +22,10 @@ def _write_split(root, split, level, image_cats, start_id):
         pixels = rng.integers(0, 255, size=(300, 360, 3), dtype=np.uint8)
         Image.fromarray(pixels).save(root / "VOC_Format" / "JPEGImages" / fname)
         images.append({"id": img_id, "file_name": fname, "width": 360, "height": 300})
+        # Train images are 0.5 m per pixel, val images 2 m
+        resolution = 0.5 if split == "train" else 2
+        (root / "VOC_Format" / "Annotations" / f"{img_id:06d}.xml").write_text(
+            f"<annotation>\n\t<Img_Resolution>{resolution}</Img_Resolution>\n</annotation>\n")
         for cat in cats:
             annotations.append({"id": len(annotations) + 1, "image_id": img_id,
                                 "category_id": cat, "bbox": [10, 10, 50, 20], "area": 1000.0,
@@ -37,6 +41,7 @@ def data_root(tmp_path):
     root = tmp_path / "ShipRSImageNet_V1"
     (root / "COCO_Format").mkdir(parents=True)
     (root / "VOC_Format" / "JPEGImages").mkdir(parents=True)
+    (root / "VOC_Format" / "Annotations").mkdir(parents=True)
     train = [[1], [2, 2, 3], [3], [4], [1, 1], [2], [3, 3, 1], [4], []]
     val = [[1], [2], [3], [2, 2, 1]]  # no Dock in val
     _write_split(root, "train", 1, train, start_id=1)
