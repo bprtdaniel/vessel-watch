@@ -1,7 +1,7 @@
 import pytest
 
 from vesselwatch.data.crops import box_sides
-from vesselwatch.data.resolution import annotation_dir, image_resolutions, main, summary
+from vesselwatch.data.resolution import annotation_dir, image_resolutions, main, name_pattern, source_report, summary
 
 
 def test_box_sides_of_a_tilted_box():
@@ -38,3 +38,31 @@ def test_images_without_resolution_are_counted_not_dropped_silently(data_root, c
     main(["--data-root", str(data_root)])
     out = capsys.readouterr().out
     assert "3 in images without a recorded resolution" in out and "at least   30 m" in out
+
+
+def test_measured_resolution_from_known_ship_lengths(data_root, monkeypatch, capsys):
+    import vesselwatch.detect.sizes as sizes
+
+    # Pretend a Warship is always 100 m long; its boxes are 50 px, so the images must be 2 m per pixel
+    monkeypatch.setattr(sizes, "CLASS_LENGTH_M", {"Warship": 100})
+    for xml in annotation_dir(data_root).glob("0000*.xml"):
+        xml.write_text("<annotation><source><database>WorldView 3</database><dataset_source>xView</dataset_source>"
+                       "</source><Img_Resolution>0.5</Img_Resolution></annotation>")
+
+    rows = source_report(data_root, level=1)
+    train = next(r for r in rows if r["source"] == "xView")
+    assert (train["sensor"], train["recorded"], train["file_names"]) == ("WorldView 3", "0.5", "9")
+    assert (train["images"], train["vessels"], train["named_class_vessels"]) == (8, 13, 3)
+    assert train["measured_median"] == pytest.approx(2.0)     # the recorded 0.5 would be wrong
+    assert train["median_box_length_px"] == pytest.approx(50)
+
+    val = next(r for r in rows if r["source"] == "-")
+    assert val["recorded"] == "2" and val["vessels"] == 6
+
+    main(["--data-root", str(data_root), "--sources", "--level", "1"])
+    assert "xView" in capsys.readouterr().out
+
+
+def test_name_pattern():
+    assert name_pattern("1472__1840_0") == "9__9_9"
+    assert name_pattern("003313") == "9"

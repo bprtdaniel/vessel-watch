@@ -112,17 +112,95 @@ def print_summary(report: dict) -> None:
         print(f"{row['class']:<14} {row['vessels']:>8} {row['median_length_m']:>12.0f} m {row['at_least_30_m']:>14}")
 
 
+def _tag(xml_text: str, name: str) -> str:
+    match = re.search(rf"<{name}>(.*?)</{name}>", xml_text, flags=re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def image_sources(data_root) -> dict[str, dict]:
+    """Per image, keyed by file stem: where it comes from and the resolution text exactly as recorded."""
+    sources = {}
+    for xml in annotation_dir(data_root).glob("*.xml"):
+        text = xml.read_text(errors="ignore")
+        sources[xml.stem] = {"source": _tag(text, "dataset_source"), "sensor": _tag(text, "database"),
+                             "recorded": _tag(text, "Img_Resolution")}
+    return sources
+
+
+def name_pattern(stem: str) -> str:
+    """Rough family of a file name, with digits replaced by 9: `1472__1840_0` becomes `9__9_9`."""
+    return re.sub(r"\d+", "9", stem)
+
+
+def source_report(data_root, level: int = 3) -> list[dict]:
+    """Recorded against measured resolution, per group of images with the same origin.
+
+    The measured value uses vessels of a named ship class: the class's known
+    hull length divided by the length of its box in pixels. Where the two
+    disagree, the recorded value is wrong, or missing.
+    """
+    import pandas as pd
+
+    from ..detect.sizes import CLASS_LENGTH_M
+
+    sources = image_sources(data_root)
+    vessels = pd.concat([coco_to_vessel_records(annotation_path(data_root, split, level)) for split in ("train", "val")],
+                        ignore_index=True)
+    stems = [Path(name).stem for name in vessels["filename"]]
+    empty = {"source": "", "sensor": "", "recorded": ""}
+    for key in ("source", "sensor", "recorded"):
+        vessels[key] = [sources.get(stem, empty)[key] or "-" for stem in stems]
+    vessels["pattern"] = [name_pattern(stem) for stem in stems]
+    vessels["length_px"] = [box_sides(polygon)[0] for polygon in vessels["polygon"]]
+    vessels["measured"] = [CLASS_LENGTH_M[label] / px if label in CLASS_LENGTH_M and px > 0 else np.nan
+                           for label, px in zip(vessels["label"], vessels["length_px"])]
+
+    rows = []
+    for (source, sensor, recorded, pattern), group in vessels.groupby(["source", "sensor", "recorded", "pattern"]):
+        measured = group["measured"].dropna().to_numpy()
+        rows.append({
+            "source": source, "sensor": sensor, "recorded": recorded, "file_names": pattern,
+            "images": int(group["filename"].nunique()), "vessels": int(len(group)),
+            "named_class_vessels": int(len(measured)),
+            "measured_median": float(np.median(measured)) if len(measured) else None,
+            "measured_p10": float(np.percentile(measured, 10)) if len(measured) else None,
+            "measured_p90": float(np.percentile(measured, 90)) if len(measured) else None,
+            "median_box_length_px": float(group["length_px"].median()),
+        })
+    return sorted(rows, key=lambda row: -row["vessels"])
+
+
+def print_source_report(rows: list[dict]) -> None:
+    print(f"{'source':<14} {'sensor':<16} {'recorded':>9} {'file names':<12} {'images':>7} {'vessels':>8} "
+          f"{'named':>6} {'measured m/px (10% - median - 90%)':>36} {'box px':>7}")
+    print("-" * 124)
+    for r in rows:
+        if r["measured_median"] is None:
+            measured = "-"
+        else:
+            measured = f"{r['measured_p10']:.2f} - {r['measured_median']:.2f} - {r['measured_p90']:.2f}"
+        print(f"{r['source'][:14]:<14} {r['sensor'][:16]:<16} {r['recorded'][:9]:>9} {r['file_names'][:12]:<12} "
+              f"{r['images']:>7} {r['vessels']:>8} {r['named_class_vessels']:>6} {measured:>36} {r['median_box_length_px']:>7.0f}")
+    print("\nrecorded: the Img_Resolution text in the annotation file. named: vessels of a ship class with a known hull")
+    print("length. measured: that length divided by the box length in pixels. box px: median box length in the group.")
+
+
 def main(argv=None):
     import os
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data-root", default=os.environ.get(DATA_ENV))
     parser.add_argument("--target", type=float, default=10.0, help="resolution to resample to, in metres per pixel")
-    parser.add_argument("--level", type=int, default=1, help="label level used for the per-class table")
+    parser.add_argument("--level", type=int, help="label level: default 1 for the summary, 3 with --sources")
+    parser.add_argument("--sources", action="store_true",
+                        help="instead, compare recorded with measured resolution per image source")
     args = parser.parse_args(argv)
     if not args.data_root:
         parser.error(f"give --data-root or set {DATA_ENV}")
-    print_summary(summary(args.data_root, args.target, args.level))
+    if args.sources:
+        print_source_report(source_report(args.data_root, args.level or 3))
+    else:
+        print_summary(summary(args.data_root, args.target, args.level or 1))
 
 
 if __name__ == "__main__":

@@ -96,6 +96,16 @@ This is step B of the Sentinel-2 experiment. So far only its first part exists.
 | Runs | `python -m vesselwatch.data.resolution --target 10` |
 | Code | [`data/resolution.py`](../src/vesselwatch/data/resolution.py) |
 | Writes | Nothing |
+| Run on | 2026-10-10 |
+| Result | Only 1,257 of the 2,748 labelled images have a recorded resolution (0.3, 0.92, 1.07 or 4 m), covering 7,134 of 13,963 vessels. The lengths that follow from the recorded values are too large to be true (median warship 355 m), so the recorded values cannot be used as they are. |
+
+| | |
+|---|---|
+| Notebook | [`step_07_downgrade_to_10m/07b_check_resolution_by_source.ipynb`](step_07_downgrade_to_10m/07b_check_resolution_by_source.ipynb) |
+| Question | For each group of images with the same origin: what resolution is recorded, and what resolution do the images really have, measured from vessels whose hull length is known? |
+| Runs | `python -m vesselwatch.data.resolution --sources` |
+| Code | [`data/resolution.py`](../src/vesselwatch/data/resolution.py), `source_report`; hull lengths in [`detect/sizes.py`](../src/vesselwatch/detect/sizes.py) |
+| Writes | Nothing |
 | Run on | not run yet |
 | Result | - |
 
