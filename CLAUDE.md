@@ -13,7 +13,7 @@ Vessel detection and classification from satellite imagery. Two tracks, one pack
 - `src/vesselwatch/metrics.py`  macro-F1, per-class, by-size, majority baseline
 - `src/vesselwatch/study.py`    trains and scores every config in a folder, resumable
 - `src/vesselwatch/detect/`     YOLO-OBB dataset export and training wrapper, two-stage pipeline with per-stage scoring
-- `src/vesselwatch/monitor/`    CDSE search/download, tiling, inference, state, email
+- `src/vesselwatch/monitor/`    CDSE search/download (`cdse.py`), tiling (`tiles.py`); inference, state and email not built
 - `configs/`                    one YAML per experiment
 - `notebooks/`                  thin Colab launchers only, no logic
 - `legacy/`                     original Colab exports, read-only reference
@@ -28,6 +28,7 @@ Most of this layout does not exist yet; see Status.
 - `python -m vesselwatch.study --configs configs/crops` runs all nine crop experiments, skipping finished ones
 - `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_obb.yaml` exports the dataset, trains the detector, scores it once on test (needs the `detect` extra)
 - `python -m vesselwatch.detect.pipeline --name <name> --detector <pt> --classifier-config <yaml> --classifier-weights <pt>` detect → crop → classify on the test split
+- `python -m vesselwatch.detect.finland --name <name> --data-dir <folder> --detector NAME=<pt> --reference --classifier <yaml>=<pt>` scores detectors and tallies classifiers on the Finnish Sentinel-2 test scenes (needs `CDSE_USERNAME` / `CDSE_PASSWORD` for the first download)
 - `python -m vesselwatch.inventory <models folder>` identifies saved weights/histories by content
 - `python -m vesselwatch.verify_legacy --models-dir <models folder>` scores the nine original weights against the paper (`--shared-classes` rescored with the train class index)
 - `python -m vesselwatch.monitor.run --aoi configs/aoi/<name>.geojson` (not built yet)
@@ -84,7 +85,9 @@ Plan agreed 2026-10-09 (the Sentinel-2 experiment). Daniel does not want to labe
 
 The write-up is a separate track, independent of steps A to F and not waiting on any of them: a chronicle of the 2025 study, what was wrong and the rework. The "what I learned" sections are Daniel's to write. Venue and language not decided. Do not schedule it inside the experiment plan.
 
-Where step A stands: documentation read and annotation files inspected, no code written. Blocked on Daniel creating a free Copernicus Data Space account (dataspace.copernicus.eu); the login goes into Colab secrets, never the repo. Then build: download of the test products, cutting into chips, conversion of the boxes to the pipeline's format, scoring, a Colab notebook (inference only, T4 is enough).
+Where step A stands (2026-10-10): code and tests written (`detect/finland.py`, `detect/sizes.py`, `monitor/cdse.py`, `monitor/tiles.py`, `notebooks/colab_sentinel2.ipynb`), not yet run on Colab. Daniel has a Copernicus account; the login goes into Colab secrets (`CDSE_USERNAME`, `CDSE_PASSWORD`), never the repo. A local trial on a 12.8 km window of scene 34VEN 20220813, with L2A imagery from a free mirror: the Finnish reference found 29 of 45 vessels with no false alarms (all 13 with boxes over 100 m, 6 of 14 under 50 m); the stock DOTA detector found none. The real download path from Copernicus is untested until the notebook runs.
+
+What the Finnish imagery looks like (inspected 2026-10-10): the labelled vessels are mostly small boats of a few bright pixels, often with a wake; the boxes include the wake, so even the largest boxes (150 to 280 m) are small fast boats, not large ships. The benchmark therefore measures small-boat and wake detection, which differs from both ShipRSImageNet (mostly moored ships, no wakes) and Daniel's eventual interest in large vessels. Report recall by box length. The IMT Atlantique/CLS set (60 scenes with image, land mask and per-ship CSV, downloaded but not yet inspected) may be the better match for large ships.
 
 Finnish dataset facts (checked 2026-10-09): five GeoPackage files named by MGRS tile (34VEM, 34VEN, 34VER, 34WFT, 35VLG), one layer per acquisition date (`YYYYMMDD`), axis-aligned box polygons in the tile's UTM CRS (EPSG:32634, 32635 for 35VLG), single label `boat`. Test set is tiles 34VEN (20210714, 20220619, 20220624, 20220813; 1,339 boxes) and 34VER (20220617, 20220712, 20220826; 355 boxes). Imagery is the L1C true-colour image (TCI) from Copernicus; free no-login mirrors carry L2A, which would handicap the Finnish model. Their model takes 320 x 320 px chips upsampled to 640 x 640; use the same chips for every model. Their weights are AGPL-3.0: fine as a benchmark, not as part of the deployed monitor.
 
