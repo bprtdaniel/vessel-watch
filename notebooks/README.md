@@ -116,8 +116,20 @@ Steps B and C of the Sentinel-2 experiment: two measurements (7a, 7b) that had t
 | Runs | `python -m vesselwatch.study --configs configs/crops_10m`, then `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_obb_10m.yaml` |
 | Code | Resolution per image: `assigned_resolutions` in [`data/resolution.py`](../src/vesselwatch/data/resolution.py). Shrinking images and boxes: [`data/resample.py`](../src/vesselwatch/data/resample.py). Fixed-scale crops: `fixed_crop` in [`data/crops.py`](../src/vesselwatch/data/crops.py). Canvases for the detector: [`detect/canvases.py`](../src/vesselwatch/detect/canvases.py). Training and scoring are the same code as steps 4 and 5. Configs: [`configs/crops_10m/`](../configs/crops_10m/), [`configs/detect/yolo11s_obb_10m.yaml`](../configs/detect/yolo11s_obb_10m.yaml) |
 | Writes | `crops10m_level{1,2,3}_{net,net_max,resnet101}/`, `study_summary_10m.json` and `yolo11s_obb_10m/` in `5.Projects/runs` |
+| Run on | 2026-10-10 |
+| Result | Classifier test accuracy at 10 m, small CNN / VGG-style / ResNet101: level 1 79.7 / 69.5 / 87.7%, level 2 52.4 / 18.8 / 69.2%, level 3 52.9 / 18.0 / 66.2%. Majority baseline 55.6% at level 1 and 9.4% at levels 2 and 3. By hull length the ResNet101 at level 1 scores 75.0% under 50 m, 88.0% from 50 to 150 m and 93.5% over 150 m, on 2,100 test vessels of at least 20 m. These are close to the high-resolution results and may be inflated: see 7e. The detector on test canvases: precision 76.2%, recall 59.2%, mAP50 63.2, mAP50-95 41.9, against 88.8 / 85.3 / 87.8 / 68.2 at full resolution. |
+
+| | |
+|---|---|
+| Notebook | [`step_07_downgrade_to_10m/07e_check_classifier_by_source.ipynb`](step_07_downgrade_to_10m/07e_check_classifier_by_source.ipynb) |
+| Question | Do the 10 m classifiers tell vessels apart, or do they recognise which source dataset a crop comes from? |
+| Runs | `python -m vesselwatch.by_source --config configs/crops_10m/level{1,2,3}_resnet101.yaml --weights <best.pt>` |
+| Code | [`by_source.py`](../src/vesselwatch/by_source.py) |
+| Writes | Nothing |
 | Run on | not run yet |
 | Result | - |
+
+[`07d_show_progress.ipynb`](step_07_downgrade_to_10m/07d_show_progress.ipynb) is a helper for 7c: it reads the run folders on Drive and prints which runs have finished and how many epochs the others have done. It writes nothing.
 
 ## Step 8: the 10 m models on real Sentinel-2 imagery
 
@@ -131,6 +143,21 @@ This is step D of the Sentinel-2 experiment.
 | Runs | `python -m vesselwatch.detect.finland --name step_d ...` with three detectors: retrained at 10 m, high-resolution, Finnish reference |
 | Code | [`detect/finland.py`](../src/vesselwatch/detect/finland.py), as in step 6 |
 | Writes | `sentinel2_step_d.json` and `sentinel2_step_d_examples/` in `5.Projects/runs` |
+| Run on | not run yet |
+| Result | - |
+
+## Step 9: fine-tuning a detector on real Sentinel-2 imagery
+
+This is step E of the Sentinel-2 experiment, added after step 8 showed that resampled training data does not transfer.
+
+| | |
+|---|---|
+| Notebook | [`step_09_finetune_on_sentinel2/09_finetune_detector_on_finnish_scenes.ipynb`](step_09_finetune_on_sentinel2/09_finetune_detector_on_finnish_scenes.ipynb) |
+| Question | How well does a standard pretrained YOLO detect vessels in Sentinel-2 scenes once it is fine-tuned on real, labelled Sentinel-2 imagery? |
+| Needs | A Copernicus Data Space login in the Colab secrets, for the eleven training scenes |
+| Runs | `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_finland.yaml`, then `python -m vesselwatch.detect.finland --name step_e ...` |
+| Code | [`detect/finland_export.py`](../src/vesselwatch/detect/finland_export.py) cuts the scenes into chips with labels. Training is [`detect/yolo.py`](../src/vesselwatch/detect/yolo.py) as in step 5, scoring [`detect/finland.py`](../src/vesselwatch/detect/finland.py) as in steps 6 and 8, now also at stricter confidence thresholds |
+| Writes | Scenes to `5.Projects/Data/sentinel2_finland`; `yolo11s_finland/`, `sentinel2_step_e.json` and `sentinel2_step_e_examples/` to `5.Projects/runs` |
 | Run on | not run yet |
 | Result | - |
 

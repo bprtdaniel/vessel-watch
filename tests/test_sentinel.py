@@ -1,5 +1,6 @@
 import sqlite3
 import struct
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -163,3 +164,99 @@ def test_download_needs_a_login(monkeypatch):
     monkeypatch.delenv(cdse.PASSWORD_ENV, raising=False)
     with pytest.raises(ValueError, match="CDSE_USERNAME"):
         cdse.access_token()
+
+
+def _finnish_scene_files(data_dir, tile, date, boxes_px, size=(700, 400)):
+    """Files as the downloader leaves them: a true-colour image, its georeference and the annotations."""
+    import json
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(int(date))
+    Image.fromarray(rng.integers(20, 90, size=(size[1], size[0], 3), dtype=np.uint8)).save(data_dir / f"T{tile}_{date}_TCI.jp2")
+    (data_dir / f"T{tile}_{date}.json").write_text(json.dumps({**INFO, "tile": tile, "date": date, "product": "test"}))
+    boxes = [(INFO["ulx"] + x0 * 10, INFO["uly"] - y1 * 10, INFO["ulx"] + x1 * 10, INFO["uly"] - y0 * 10)
+             for x0, y0, x1, y1 in boxes_px]
+    gpkg = data_dir / f"{tile}.gpkg"
+    con = sqlite3.connect(gpkg)
+    con.execute(f'create table if not exists "{date}" (fid integer primary key, geom blob, id text)')
+    for min_x, min_y, max_x, max_y in boxes:
+        ring = [(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y), (min_x, min_y)]
+        wkb = struct.pack("<BII", 1, 3, 1) + struct.pack("<I", 5) + b"".join(struct.pack("<2d", *p) for p in ring)
+        con.execute(f'insert into "{date}" (geom, id) values (?, ?)', (b"GP" + bytes([0, 1]) + struct.pack("<i", 32634) + wkb, "boat"))
+    con.commit()
+    con.close()
+
+
+def test_stricter_confidence_thresholds_are_reported_alongside():
+    scenes, truth = _scene()
+
+    def mixed(chips):
+        """A confident detection on the first vessel, a weak one on the second, a weak false alarm."""
+        out = [[] for _ in chips]
+        out[0] = [Detection(_corners(truth[0]), 0.9, "ship"), Detection(_corners(truth[1]), 0.3, "ship"),
+                  Detection(_corners((200, 200, 204, 204)), 0.6, "ship")]
+        return out
+
+    score = finland.evaluate(scenes, {"mixed": mixed})["detectors"]["mixed"]
+    assert (score["detections"], score["found_centre"]) == (3, 2)
+    assert score["at_confidence"]["0.5"]["detections"] == 2 and score["at_confidence"]["0.5"]["found_centre"] == 1
+    assert score["at_confidence"]["0.7"]["detections"] == 1 and score["at_confidence"]["0.7"]["precision_centre"] == 100
+    assert "by_length" not in score["at_confidence"]["0.5"]
+    finland.print_report({"scenes": ["scene"], "chip": 320, "detectors": {"mixed": score}, "classifiers": {}})
+
+
+def test_chip_labels_follow_the_box_centre_and_are_clipped():
+    from vesselwatch.detect.finland_export import chip_labels
+
+    truth = np.array([[10.0, 20, 30, 40],      # inside the first chip
+                      [310, 100, 330, 110],     # centred on the boundary: belongs to the second chip
+                      [300, 200, 318, 210]])    # centre at 309: first chip, nothing to clip
+    first = chip_labels(truth, 0, 0, 320)
+    assert len(first) == 2
+    assert first[0] == f"0 {20 / 320:.6f} {30 / 320:.6f} {20 / 320:.6f} {20 / 320:.6f}"
+    second = chip_labels(truth, 320, 0, 320)
+    assert len(second) == 1
+    # Only the part from x = 320 to 330 lies in the second chip
+    assert second[0] == f"0 {5 / 320:.6f} {105 / 320:.6f} {10 / 320:.6f} {10 / 320:.6f}"
+
+
+def test_finnish_chip_export(tmp_path):
+    import yaml
+
+    from vesselwatch.detect.finland_export import export_finland_chips
+
+    data = tmp_path / "s2"
+    _finnish_scene_files(data, "34VEM", "20220515", [(50, 60, 54, 63), (600, 350, 630, 356)])
+    _finnish_scene_files(data, "34VEM", "20220813", [(315, 100, 325, 104)])
+    _finnish_scene_files(data, "34VEN", "20210714", [(10, 10, 14, 14)])
+    splits = {"train": [("34VEM", "20220515")], "val": [("34VEM", "20220813")], "test": [("34VEN", "20210714")]}
+
+    out = tmp_path / "chips"
+    dataset_yaml = export_finland_chips(data, out, empty_ratio=1, splits=splits)
+    assert yaml.safe_load(dataset_yaml.read_text())["names"] == {0: "vessel"}
+
+    def count(split):
+        labels = sorted((out / "labels" / split).iterdir())
+        images = sorted((out / "images" / split).iterdir())
+        assert [p.stem for p in labels] == [p.stem for p in images]
+        return len(labels), sum(bool(p.read_text().strip()) for p in labels)
+
+    assert count("train") == (4, 2)     # two chips with a vessel, and one empty chip kept for each
+    assert count("val") == (2, 1)
+    assert count("test") == (6, 1)      # every chip of a test scene is kept
+    assert Image.open(next((out / "images" / "train").iterdir())).size == (320, 320)
+    assert export_finland_chips(data, out, splits=splits) == dataset_yaml
+
+
+def test_detector_config_for_the_finnish_chips(tmp_path, monkeypatch):
+    from vesselwatch.detect.yolo import DetectConfig, load_detect_config
+
+    cfg = load_detect_config(Path(__file__).parents[1] / "configs" / "detect" / "yolo11s_finland.yaml",
+                             runs_dir=str(tmp_path))
+    assert (cfg.dataset, cfg.weights, cfg.imgsz) == ("finland", "yolo11s.pt", 640)
+    assert cfg.dataset_dir().name == "finland_chips_empty2_seed0"
+    monkeypatch.delenv("VESSELWATCH_S2", raising=False)
+    with pytest.raises(ValueError, match="VESSELWATCH_S2"):
+        cfg.export_dataset()
+    with pytest.raises(ValueError, match="Unknown dataset"):
+        DetectConfig(name="x", dataset="elsewhere", runs_dir=str(tmp_path)).export_dataset()

@@ -20,6 +20,8 @@ from ..config import CACHE_ENV, DATA_ENV, RUNS_ENV
 from .canvases import export_canvases
 from .export import export_yolo_obb
 
+S2_ENV = "VESSELWATCH_S2"
+
 
 @dataclass
 class DetectConfig:
@@ -38,6 +40,11 @@ class DetectConfig:
     min_length_m: float = 20.0       # with resample_to: vessels shorter than this are not labelled
     canvas: int = 320
     passes: int = 20                 # passes over the train scenes when composing canvases
+    # "shiprsimagenet", or "finland": chips of the Finnish Sentinel-2 scenes with their vessel boxes,
+    # see detect/finland_export.py. Those scenes are kept in s2_dir (or VESSELWATCH_S2).
+    dataset: str = "shiprsimagenet"
+    s2_dir: str | None = None
+    empty_ratio: float = 2.0         # finland: chips without a vessel kept per chip with one
     data_root: str | None = None
     runs_dir: str | None = None
     cache_dir: str | None = None
@@ -56,6 +63,8 @@ class DetectConfig:
 
     def dataset_dir(self) -> Path:
         base = self.cache_dir or os.environ.get(CACHE_ENV) or self.runs_root()
+        if self.dataset == "finland":
+            return Path(base) / f"finland_chips_empty{self.empty_ratio:g}_seed{self.seed}"
         name = f"yolo_obb_level{self.level}_split{self.split_seed}"
         if self.resample_to:
             name += f"_at_{self.resample_to:g}m_canvas{self.canvas}_passes{self.passes}"
@@ -63,6 +72,15 @@ class DetectConfig:
 
     def export_dataset(self) -> Path:
         """Write the training data in YOLO's layout and return its dataset.yaml."""
+        if self.dataset == "finland":
+            from .finland_export import export_finland_chips
+
+            s2_dir = self.s2_dir or os.environ.get(S2_ENV)
+            if not s2_dir:
+                raise ValueError(f"Set s2_dir in the config or the {S2_ENV} environment variable")
+            return export_finland_chips(s2_dir, self.dataset_dir(), empty_ratio=self.empty_ratio, seed=self.seed)
+        if self.dataset != "shiprsimagenet":
+            raise ValueError(f"Unknown dataset '{self.dataset}'")
         if self.resample_to:
             return export_canvases(self.resolved_data_root(), self.dataset_dir(), self.resample_to, self.level,
                                    self.val_fraction, self.split_seed, self.min_length_m, self.canvas,

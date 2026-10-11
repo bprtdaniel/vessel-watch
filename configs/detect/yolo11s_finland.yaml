@@ -1,0 +1,8 @@
+# YOLO11 (small), COCO-pretrained, fine-tuned on the Finnish Sentinel-2 vessel annotations
+name: yolo11s_finland
+weights: yolo11s.pt
+dataset: finland
+epochs: 100
+imgsz: 640
+batch: 32
+empty_ratio: 2

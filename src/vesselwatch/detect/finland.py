@@ -41,7 +41,14 @@ ANNOTATIONS_URL = "https://zenodo.org/records/15019034/files/{tile}.gpkg?downloa
 REFERENCE_WEIGHTS_URL = "https://huggingface.co/mayrajeo/marine-vessel-yolo/resolve/main/yolo11s_tci.pt"
 TEST_SCENES = [("34VEN", "20210714"), ("34VEN", "20220619"), ("34VEN", "20220624"), ("34VEN", "20220813"),
                ("34VER", "20220617"), ("34VER", "20220712"), ("34VER", "20220826")]
+# The other three tiles are for training. One date of each is held back to choose the checkpoint;
+# it shares its coastline with the training dates, so it says nothing about new places.
+TRAIN_SCENES = [("34VEM", "20220515"), ("34VEM", "20220619"), ("34VEM", "20220721"),
+                ("34WFT", "20220627"), ("34WFT", "20220712"),
+                ("35VLG", "20220606"), ("35VLG", "20220626"), ("35VLG", "20220703")]
+VAL_SCENES = [("34VEM", "20220813"), ("34WFT", "20220828"), ("35VLG", "20220721")]
 CHIP = 320            # pixels, 3.2 km at 10 m
+CONFIDENCE_STEPS = (0.5, 0.7)  # stricter thresholds reported next to the one the detectors are run at
 CHIPS_AT_ONCE = 256   # chips cut and held in memory together
 # By the long side of the annotated box, which includes the wake
 LENGTH_BUCKETS = (("under 50 m", 0, 50), ("50 to 100 m", 50, 100), ("over 100 m", 100, float("inf")))
@@ -85,7 +92,7 @@ def to_pixels(box, info: dict) -> tuple[float, float, float, float]:
             (max_x - info["ulx"]) / res, (info["uly"] - min_y) / res)
 
 
-def load_test_scenes(data_dir, scenes=TEST_SCENES):
+def load_scenes(data_dir, scenes=TEST_SCENES):
     """Yield (name, image, truth boxes in pixels), downloading what is not in `data_dir` yet."""
     data_dir = Path(data_dir)
     for tile, date in scenes:
@@ -278,6 +285,7 @@ def evaluate(scenes, detectors: dict, classifiers: dict | None = None, examples_
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     classifiers = classifiers or {}
     scores = {name: empty_score() for name in detectors}
+    stricter = {name: {step: empty_score() for step in CONFIDENCE_STEPS} for name in detectors}
     labels = {name: {"true_boxes": ([], []), "pipeline_detections": ([], [])} for name in classifiers}
     scene_names = []
 
@@ -287,6 +295,8 @@ def evaluate(scenes, detectors: dict, classifiers: dict | None = None, examples_
         for name, detect in detectors.items():
             found[name] = detect_scene(img, detect)
             add_scene(scores[name], truth, found[name])
+            for step, score in stricter[name].items():
+                add_scene(score, truth, [d for d in found[name] if d.score >= step])
             print(f"{scene} | {name}: {len(truth)} labelled vessels, {len(found[name])} detections", flush=True)
 
         pipeline_boxes = bounds(next(iter(found.values()))) if found else np.zeros((0, 4))
@@ -300,7 +310,12 @@ def evaluate(scenes, detectors: dict, classifiers: dict | None = None, examples_
     return {
         "scenes": scene_names,
         "chip": CHIP,
-        "detectors": {name: finish(score) for name, score in scores.items()},
+        "detectors": {
+            name: {**finish(score),
+                   "at_confidence": {str(step): {key: value for key, value in finish(s).items() if key != "by_length"}
+                                     for step, s in stricter[name].items()}}
+            for name, score in scores.items()
+        },
         "classifiers": {name: {key: tally(*pair) for key, pair in sets.items() if pair[0]}
                         for name, sets in labels.items()},
     }
@@ -310,12 +325,18 @@ def print_report(report: dict) -> None:
     print(f"\n{len(report['scenes'])} scenes, cut into {report['chip']} x {report['chip']} pixel chips")
     print(f"\n{'detector':<22} {'vessels':>8} {'detections':>11} {'found':>8} {'found (IoU 0.5)':>16} {'hits':>7}")
     print("-" * 78)
+    def pct(v):
+        return "-" if v is None else f"{v:.1f}%"
+
     for name, s in report["detectors"].items():
-        def pct(v):
-            return "-" if v is None else f"{v:.1f}%"
         print(f"{name:<22} {s['vessels']:>8} {s['detections']:>11} {pct(s['recall_centre']):>8} "
               f"{pct(s['recall_iou50']):>16} {pct(s['precision_centre']):>7}")
     print("\nfound: a detection's centre lies inside the vessel's box. hits: share of detections that found a vessel.")
+    print("\nAt stricter confidence thresholds (detections | found | hits):")
+    for name, s in report["detectors"].items():
+        parts = [f"{step}: {t['detections']} | {pct(t['recall_centre'])} | {pct(t['precision_centre'])}"
+                 for step, t in s["at_confidence"].items()]
+        print(f"  {name:<20} " + "   ".join(parts))
     print("\nFound, by length of the labelled box (wake included):")
     for name, s in report["detectors"].items():
         parts = [f"{bucket} {b['found_centre']}/{b['vessels']}" for bucket, b in s["by_length"].items()]
@@ -362,7 +383,7 @@ def main(argv=None):
         model, classes = load_classifier(cfg, weights, device)
         classifiers[cfg.run_name] = (model, classes, cfg)
 
-    scenes = load_test_scenes(data_dir, TEST_SCENES[:args.scenes] if args.scenes else TEST_SCENES)
+    scenes = load_scenes(data_dir, TEST_SCENES[:args.scenes] if args.scenes else TEST_SCENES)
     report = evaluate(scenes, detectors, classifiers, examples_dir=runs / f"sentinel2_{args.name}_examples")
     report = {"name": args.name, "conf": args.conf, **report}
 
