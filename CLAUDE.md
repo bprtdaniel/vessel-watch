@@ -17,6 +17,7 @@ Vessel detection and classification from satellite imagery. Two tracks, one pack
 - `configs/`                    one YAML per experiment
 - `notebooks/`                  Colab launchers, one folder per step (`step_NN_name/NN_what_it_does.ipynb`); `notebooks/README.md` is the guide
 - `legacy/`                     original Colab exports, read-only reference
+- `docs/pathway.md`             record of every stage: question, settings, result, decision, evidence, open gaps; keep it current
 - `docs/experiments/`           parked ideas, one file each; not roadmap work until Daniel says so
 - `data/`, `runs/`              git-ignored
 
@@ -31,7 +32,9 @@ Most of this layout does not exist yet; see Status.
 - `python -m vesselwatch.detect.finland --name <name> --data-dir <folder> --detector NAME=<pt> --reference --classifier <yaml>=<pt>` scores detectors and tallies classifiers on the Finnish Sentinel-2 test scenes (needs `CDSE_USERNAME` / `CDSE_PASSWORD` for the first download)
 - `python -m vesselwatch.data.resolution --target 10` prints the images' ground resolutions, scene sizes at the target resolution and vessel lengths in metres
 - `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_finland.yaml` fine-tunes a detector on chips of the Finnish Sentinel-2 scenes (needs `VESSELWATCH_S2` and, for the first download, the Copernicus login)
-- `python -m vesselwatch.by_source --config <yaml> --weights <pt>` compares a classifier's test accuracy per image source with a rule that knows only the source
+- `python -m vesselwatch.by_source --config <yaml> --weights <pt>` compares a classifier's test accuracy per image source with a rule that knows only the source (writes `by_source.json` to the run folder)
+- `python -m vesselwatch.collect_results --runs <runs> --models <models> --out <file>` gathers every result file into one JSON for `docs/pathway.md`
+- `detect.finland` takes `--keep NAME=CLASS` to count one class of one detector (`--keep stock=boat` for stock COCO YOLO) and reports each detector's best recall at 50 / 60 / 70% hits
 - `python -m vesselwatch.inventory <models folder>` identifies saved weights/histories by content
 - `python -m vesselwatch.verify_legacy --models-dir <models folder>` scores the nine original weights against the paper (`--shared-classes` rescored with the train class index)
 - `python -m vesselwatch.monitor.run --aoi configs/aoi/<name>.geojson` (not built yet)
@@ -43,7 +46,7 @@ Data and output folders come from `data_root` / `runs_dir` in the config, or the
 - Class index mapping comes from the train split and is saved with every checkpoint. Never rebuild it from val/test.
 - Test split is touched once per experiment, after model selection on val. The dataset's own test split has no labels: the official val split is the test set, and validation is carved out of train by image (`val_fraction`, `split_seed`).
 - Every run fixes a seed and writes config + metrics + class map to `runs/<id>/`.
-- The monitor deploys Daniel's own models, even where a published model scores higher (decided 2026-10-09). Published models, such as the Finnish Environment Institute's Sentinel-2 YOLOv8 detector, are benchmarks: report both scores side by side and say the choice was deliberate.
+- The monitor deploys Daniel's own models, even where a published model scores higher (decided 2026-10-09). Published models, such as the Finnish Environment Institute's Sentinel-2 detector (a YOLO11s, `yolo11s_tci.pt`), are benchmarks: report both scores side by side and say the choice was deliberate.
 - Keep a thin `Predictor` interface so the deployed model can be swapped later.
 - No secrets in the repo. CDSE and SMTP credentials come from environment variables / GitHub secrets.
 - Do not claim fine-grained classes on Sentinel-2 output; 10 m supports detection and size class only.
@@ -60,7 +63,7 @@ Data and output folders come from `data_root` / `runs_dir` in the config, or the
 - `RandomRotation(0.5)` is ±0.5 degrees; different optimiser per model; no seeds.
 
 ## Status
-Roadmap lives in `README.md`. Done: steps 3–10, 12, 13, 15 and 16. Next: batch 3, a short write-up of old vs. new results and a one-page Sentinel design note. The detector trains on the level 0 boxes (two classes) and only localises; the class comes from the crop classifier. Steps 11 and 14 are postponed. Step 1 done (inventory run on Drive 2026-10-03); step 2 is deferred until something local needs real data. Step 7 done (Colab, 2026-10-08): all nine original weights score within 0.01 points of the paper through the ported package; result in `5.Projects/models/legacy_verification.json`. `monitor/` does not exist yet.
+Roadmap lives in `README.md`; the stage-by-stage record is `docs/pathway.md`. Done: steps 3–10, 12, 13, 15 and 16. Next: the baselines batch (05c, 07e, 10a, 10b on Colab), then step F. The detector trains on the level 0 boxes (two classes) and only localises; the class comes from the crop classifier. Steps 11 and 14 are postponed. Step 1 done (inventory run on Drive 2026-10-03); step 2 is deferred until something local needs real data. Step 7 done (Colab, 2026-10-08): all nine original weights score within 0.01 points of the paper through the ported package; result in `5.Projects/models/legacy_verification.json`. `monitor/` does not exist yet.
 
 The default setup is the corrected one (`configs/crops/`): `labels: vessel_crops` gives one sample per annotated vessel, cut along its oriented box, with the class list taken from the train file's categories. The original study, defects included, is kept behind two switches set in `configs/legacy/` (`labels: image_majority`, `per_split_classes: true`). All crop runs use Adam and differ only in model and learning rate; the model is selected on val accuracy.
 
@@ -93,9 +96,13 @@ The message Daniel wants the write-up to carry: he trained models from scratch a
 
 The write-up is a separate track, independent of steps A to F and not waiting on any of them: a chronicle of the 2025 study, what was wrong and the rework. The "what I learned" sections are Daniel's to write. Venue and language not decided. Do not schedule it inside the experiment plan.
 
-Step E is built and tested on synthetic scene files, not yet run (2026-10-11): `detect/finland_export.py` (chips with labels; train scenes are eight dates of tiles 34VEM, 34WFT and 35VLG, validation one further date of each, test the seven scenes of steps A and D; two empty chips kept per chip with a vessel), `configs/detect/yolo11s_finland.yaml` (run `yolo11s_finland`), notebook `step_09_finetune_on_sentinel2/09_finetune_detector_on_finnish_scenes.ipynb`. `detect/finland.py` now also reports each detector at confidence 0.5 and 0.7.
+Step E was run on 2026-10-16 (result below). Its setup: `detect/finland_export.py` (chips with labels; train scenes are eight dates of tiles 34VEM, 34WFT and 35VLG, validation one further date of each, test the seven scenes of steps A and D; two empty chips kept per chip with a vessel), `configs/detect/yolo11s_finland.yaml` (run `yolo11s_finland`), notebook `step_09_finetune_on_sentinel2/09_finetune_detector_on_finnish_scenes.ipynb`. `detect/finland.py` now also reports each detector at confidence 0.5 and 0.7.
 
 Pivot decided by Daniel on 2026-10-11: resampling ShipRSImageNet to 10 m does not transfer to real Sentinel-2. In step D the 10 m detector produced 12,500 to 15,800 detections per scene against 66 to 450 labelled vessels (first four scenes; the final table had not been pasted when this was written). The write-up is to show that attempt and its failure, then the switch to real Sentinel-2 training data. This supersedes the rule above about deploying only models trained on Daniel's own data: the deployed detector is his own training run on the public Finnish labels.
+
+Step E result (Colab A100, 2026-10-16, `5.Projects/runs/yolo11s_finland/`, `sentinel2_step_e.json`): 100 epochs, AdamW lr 0.002, val mAP50 about 0.80 and mAP50-95 about 0.33 from epoch 70. On the seven test scenes at conf 0.25: fine-tuned found 93.1% (89.8% at IoU 0.5), hits 38.8% of 4,065; Finnish reference 90.1% (86.5%), hits 54.1% of 2,822; 10 m detector 8.7% (0.4%), hits 0.2% of 85,762. At conf 0.5 fine-tuned 73.7% found, 54.7% hits; reference 61.2%, 64.3%. So at equal precision the reference finds more; claim "comparable, more sensitive at the default threshold", not "better". Under 50 m: 665 vs 619 of 750. The test-chip line of `metrics_test.json` was not captured.
+
+Baselines batch (built 2026-10-16, not run): notebooks 05c (stock vs fine-tuned YOLO11s-OBB at high resolution), 07e (source check, now with the high-resolution classifiers as control), `step_10_baselines/10a` (all five detectors on Sentinel-2 in one table, stock YOLO11s included) and `10b` (collects everything into `pathway_results.json`, to be copied to `docs/results/`). Then `docs/pathway.md` gets its gaps filled. Daniel wants a clean record of every stage with its decisions and parameters before the write-up; the write-up itself is not to be drafted yet.
 
 Step A result (Colab, 2026-10-10, `5.Projects/runs/sentinel2_step_a.json`; seven Finnish test scenes, 1,694 labelled vessels, conf 0.25): the high-resolution detector found 5 vessels (0.3%), all with boxes over 100 m, and 0.6% of its 797 detections hit a vessel. The Finnish reference found 90.1% (86.5% at IoU 0.5; 83% of boxes under 50 m, 95% of 50 to 100 m, 280 of 281 over 100 m), with 54.1% of its 2,822 detections hitting a vessel. Classifiers on the labelled boxes: level 1 said Merchant for all 1,694; level 3 said Motorboat 62% and Sailboat 38%. That is a near-constant answer and cannot be scored, but it is not absurd, since these are small boats. The size-contradiction count was 0 of 16. The Copernicus download path works. Next: step B.
 

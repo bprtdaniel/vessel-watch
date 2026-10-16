@@ -202,6 +202,10 @@ def test_stricter_confidence_thresholds_are_reported_alongside():
     assert score["at_confidence"]["0.5"]["detections"] == 2 and score["at_confidence"]["0.5"]["found_centre"] == 1
     assert score["at_confidence"]["0.7"]["detections"] == 1 and score["at_confidence"]["0.7"]["precision_centre"] == 100
     assert "by_length" not in score["at_confidence"]["0.5"]
+    # Two thirds hits at the run threshold, all hits from 0.7: 70% hits costs half the vessels found
+    assert score["at_hit_rate"]["60"]["conf"] == 0.25
+    assert score["at_hit_rate"]["70"]["conf"] == 0.7
+    assert score["at_hit_rate"]["70"]["recall_centre"] == score["at_confidence"]["0.7"]["recall_centre"]
     finland.print_report({"scenes": ["scene"], "chip": 320, "detectors": {"mixed": score}, "classifiers": {}})
 
 
@@ -260,3 +264,33 @@ def test_detector_config_for_the_finnish_chips(tmp_path, monkeypatch):
         cfg.export_dataset()
     with pytest.raises(ValueError, match="Unknown dataset"):
         DetectConfig(name="x", dataset="elsewhere", runs_dir=str(tmp_path)).export_dataset()
+
+
+def test_chip_detector_keeps_or_drops_classes_by_name(monkeypatch):
+    """A stock COCO model counts only its boats; a ShipRSImageNet detector drops its docks."""
+    import sys
+    import types
+
+    class Boxes:
+        xyxy = torch.tensor([[0, 0, 4, 4], [10, 10, 14, 14], [20, 20, 24, 24]], dtype=torch.float)
+        conf = torch.tensor([0.9, 0.8, 0.7])
+        cls = torch.tensor([0, 1, 2])
+
+    class Result:
+        obb = None
+        boxes = Boxes()
+        names = {0: "boat", 1: "car", 2: "Dock"}
+
+    class FakeYOLO:
+        def __init__(self, weights):
+            pass
+
+        def predict(self, chips, **kwargs):
+            return [Result() for _ in chips]
+
+    monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=FakeYOLO))
+    chips = [Image.new("RGB", (32, 32))]
+    labels = lambda detect: [d.label for d in detect(chips)[0]]
+    assert labels(finland.chip_detector("w.pt")) == ["boat", "car", "Dock"]
+    assert labels(finland.chip_detector("w.pt", keep_classes={"boat"})) == ["boat"]
+    assert labels(finland.chip_detector("w.pt", drop_classes=["Dock"])) == ["boat", "car"]

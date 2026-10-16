@@ -12,11 +12,13 @@ can score well without looking at the vessel. Two numbers test for that:
 - the classifier's accuracy within each source, next to that rule's.
 
 A classifier that beats the rule clearly within each source is telling vessels
-apart. One that matches it has learned the source.
+apart. One that matches it has learned the source. Writes by_source.json to the
+run folder.
 """
 from __future__ import annotations
 
 import argparse
+import json
 from collections import Counter
 from pathlib import Path
 
@@ -95,7 +97,13 @@ def main(argv=None):
     parser.add_argument("--num-workers", type=int)
     args = parser.parse_args(argv)
     cfg = load_config(args.config, data_root=args.data_root, runs_dir=args.runs_dir, num_workers=args.num_workers)
-    print_report(by_source(cfg, args.weights))
+    report = by_source(cfg, args.weights)
+    print_report(report)
+    out = cfg.run_dir() / "by_source.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"Written to {out}")
 
 
 if __name__ == "__main__":

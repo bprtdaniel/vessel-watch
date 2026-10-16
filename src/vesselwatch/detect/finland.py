@@ -48,11 +48,14 @@ TRAIN_SCENES = [("34VEM", "20220515"), ("34VEM", "20220619"), ("34VEM", "2022072
                 ("35VLG", "20220606"), ("35VLG", "20220626"), ("35VLG", "20220703")]
 VAL_SCENES = [("34VEM", "20220813"), ("34WFT", "20220828"), ("35VLG", "20220721")]
 CHIP = 320            # pixels, 3.2 km at 10 m
-CONFIDENCE_STEPS = (0.5, 0.7)  # stricter thresholds reported next to the one the detectors are run at
+# Stricter thresholds reported next to the one the detectors are run at. The fine steps let two
+# detectors be compared at the same share of hits, not only at the same threshold.
+CONFIDENCE_STEPS = (0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7)
+HIT_TARGETS = (50, 60, 70)  # percent of detections on a vessel, for the equal-precision comparison
 CHIPS_AT_ONCE = 256   # chips cut and held in memory together
 # By the long side of the annotated box, which includes the wake
 LENGTH_BUCKETS = (("under 50 m", 0, 50), ("50 to 100 m", 50, 100), ("over 100 m", 100, float("inf")))
-COLOURS = [(255, 70, 70), (70, 170, 255), (255, 200, 60)]
+COLOURS = [(255, 70, 70), (70, 170, 255), (255, 200, 60), (230, 90, 230), (255, 255, 255)]
 
 
 # --- data ---------------------------------------------------------------------------------------
@@ -104,11 +107,13 @@ def load_scenes(data_dir, scenes=TEST_SCENES):
 
 # --- detection ----------------------------------------------------------------------------------
 
-def chip_detector(weights, imgsz: int = 640, conf: float = 0.25, drop_classes=(), batch: int = 32):
+def chip_detector(weights, imgsz: int = 640, conf: float = 0.25, drop_classes=(), keep_classes=None,
+                  batch: int = 32):
     """A function mapping a list of chips to one list of Detections per chip.
 
     Works for oriented-box and ordinary box models; an ordinary box comes back
-    as its four corners. Chips are enlarged to `imgsz` by the model.
+    as its four corners. Chips are enlarged to `imgsz` by the model. With
+    `keep_classes`, only those classes count, e.g. `boat` for a stock COCO model.
     """
     from ultralytics import YOLO  # imported here so the rest of the package works without it
 
@@ -128,7 +133,8 @@ def chip_detector(weights, imgsz: int = 640, conf: float = 0.25, drop_classes=()
                 labels = [result.names[int(c)] for c in boxes.cls.cpu().numpy()]
                 found.append([Detection(tuple(map(float, c)), float(s), name)
                               for c, s, name in zip(corners, boxes.conf.cpu().numpy(), labels)
-                              if name not in drop_classes])
+                              if name not in drop_classes
+                              and (keep_classes is None or name in keep_classes)])
         return found
 
     return detect
@@ -220,6 +226,26 @@ def finish(score: dict) -> dict:
     return score
 
 
+def best_at_hit_rate(conf: float, base: dict, at_confidence: dict) -> dict:
+    """For each target share of hits, the threshold that finds the most vessels while reaching it.
+
+    `base` is the score at `conf`, the threshold the detector was run at, and
+    `at_confidence` the scores at the stricter ones. None where no threshold
+    reaches the target.
+    """
+    candidates = [(conf, base)] + [(float(step), s) for step, s in at_confidence.items()]
+    best = {}
+    for target in HIT_TARGETS:
+        ok = [(c, s) for c, s in candidates if s["precision_centre"] is not None and s["precision_centre"] >= target]
+        if not ok:
+            best[str(target)] = None
+            continue
+        c, s = max(ok, key=lambda pair: pair[1]["recall_centre"])
+        best[str(target)] = {"conf": c, "recall_centre": s["recall_centre"],
+                             "precision_centre": s["precision_centre"], "detections": s["detections"]}
+    return best
+
+
 # --- classification -----------------------------------------------------------------------------
 
 def classify_boxes(img, boxes: np.ndarray, classifier, device) -> list[str]:
@@ -274,13 +300,15 @@ def save_examples(img, truth, detections_by_name: dict, out_dir: Path, scene: st
         view.save(out_dir / f"{scene}_x{x}_y{y}.png")
 
 
-def evaluate(scenes, detectors: dict, classifiers: dict | None = None, examples_dir: Path | None = None) -> dict:
+def evaluate(scenes, detectors: dict, classifiers: dict | None = None, examples_dir: Path | None = None,
+             conf: float = 0.25) -> dict:
     """Score every detector on every scene and tally every classifier.
 
     `scenes` yields (name, image, truth boxes in pixels). `detectors` maps a
     name to a chip detector; the first one is the pipeline's own detector, and
     its detections are what the classifiers are run on, next to the true boxes.
-    `classifiers` maps a name to (model, class list, config).
+    `classifiers` maps a name to (model, class list, config). `conf` is the
+    threshold the detectors were run at.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     classifiers = classifiers or {}
@@ -307,15 +335,17 @@ def evaluate(scenes, detectors: dict, classifiers: dict | None = None, examples_
         if examples_dir is not None:
             save_examples(img, truth, found, examples_dir, scene)
 
+    detectors_report = {}
+    for name, score in scores.items():
+        at_confidence = {str(step): {key: value for key, value in finish(s).items() if key != "by_length"}
+                         for step, s in stricter[name].items()}
+        finished = finish(score)
+        detectors_report[name] = {**finished, "at_confidence": at_confidence,
+                                  "at_hit_rate": best_at_hit_rate(conf, finished, at_confidence)}
     return {
         "scenes": scene_names,
         "chip": CHIP,
-        "detectors": {
-            name: {**finish(score),
-                   "at_confidence": {str(step): {key: value for key, value in finish(s).items() if key != "by_length"}
-                                     for step, s in stricter[name].items()}}
-            for name, score in scores.items()
-        },
+        "detectors": detectors_report,
         "classifiers": {name: {key: tally(*pair) for key, pair in sets.items() if pair[0]}
                         for name, sets in labels.items()},
     }
@@ -336,6 +366,11 @@ def print_report(report: dict) -> None:
     for name, s in report["detectors"].items():
         parts = [f"{step}: {t['detections']} | {pct(t['recall_centre'])} | {pct(t['precision_centre'])}"
                  for step, t in s["at_confidence"].items()]
+        print(f"  {name:<20} " + "   ".join(parts))
+    print("\nMost vessels found while at least this share of detections are hits, over all thresholds:")
+    for name, s in report["detectors"].items():
+        parts = [f"{target}%: -" if best is None else f"{target}%: {best['recall_centre']:.1f}% (conf {best['conf']})"
+                 for target, best in s["at_hit_rate"].items()]
         print(f"  {name:<20} " + "   ".join(parts))
     print("\nFound, by length of the labelled box (wake included):")
     for name, s in report["detectors"].items():
@@ -359,6 +394,8 @@ def main(argv=None):
     parser.add_argument("--reference", action="store_true", help="also score the published Finnish model")
     parser.add_argument("--classifier", action="append", default=[], metavar="CONFIG=WEIGHTS")
     parser.add_argument("--drop-class", action="append", default=[], help="detector class to ignore, e.g. Dock")
+    parser.add_argument("--keep", action="append", default=[], metavar="NAME=CLASS",
+                        help="count only this class for the named detector, e.g. stock=boat; repeat for several")
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--scenes", type=int, help="use only the first N scenes, for a quick trial")
     parser.add_argument("--runs-dir")
@@ -368,10 +405,15 @@ def main(argv=None):
     runs = Path(args.runs_dir or os.environ.get(RUNS_ENV, "runs"))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    keep = {}
+    for spec in args.keep:
+        name, cls = spec.split("=", 1)
+        keep.setdefault(name, set()).add(cls)
     detectors = {}
     for spec in args.detector:
         name, weights = spec.split("=", 1)
-        detectors[name] = chip_detector(weights, conf=args.conf, drop_classes=args.drop_class)
+        detectors[name] = chip_detector(weights, conf=args.conf, drop_classes=args.drop_class,
+                                        keep_classes=keep.get(name))
     if args.reference:
         weights = download(REFERENCE_WEIGHTS_URL, data_dir / "yolo11s_tci.pt")
         detectors["finnish_reference"] = chip_detector(weights, conf=args.conf)
@@ -384,7 +426,8 @@ def main(argv=None):
         classifiers[cfg.run_name] = (model, classes, cfg)
 
     scenes = load_scenes(data_dir, TEST_SCENES[:args.scenes] if args.scenes else TEST_SCENES)
-    report = evaluate(scenes, detectors, classifiers, examples_dir=runs / f"sentinel2_{args.name}_examples")
+    report = evaluate(scenes, detectors, classifiers, examples_dir=runs / f"sentinel2_{args.name}_examples",
+                      conf=args.conf)
     report = {"name": args.name, "conf": args.conf, **report}
 
     runs.mkdir(parents=True, exist_ok=True)

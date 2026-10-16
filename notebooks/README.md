@@ -123,9 +123,9 @@ Steps B and C of the Sentinel-2 experiment: two measurements (7a, 7b) that had t
 |---|---|
 | Notebook | [`step_07_downgrade_to_10m/07e_check_classifier_by_source.ipynb`](step_07_downgrade_to_10m/07e_check_classifier_by_source.ipynb) |
 | Question | Do the 10 m classifiers tell vessels apart, or do they recognise which source dataset a crop comes from? |
-| Runs | `python -m vesselwatch.by_source --config configs/crops_10m/level{1,2,3}_resnet101.yaml --weights <best.pt>` |
+| Runs | `python -m vesselwatch.by_source --config configs/crops_10m/level{1,2,3}_resnet101.yaml --weights <best.pt>`, then the same for the high-resolution classifiers of step 4 (`configs/crops/`) as a control |
 | Code | [`by_source.py`](../src/vesselwatch/by_source.py) |
-| Writes | Nothing |
+| Writes | `by_source.json` in each of the six run folders |
 | Run on | not run yet |
 | Result | - |
 
@@ -143,8 +143,8 @@ This is step D of the Sentinel-2 experiment.
 | Runs | `python -m vesselwatch.detect.finland --name step_d ...` with three detectors: retrained at 10 m, high-resolution, Finnish reference |
 | Code | [`detect/finland.py`](../src/vesselwatch/detect/finland.py), as in step 6 |
 | Writes | `sentinel2_step_d.json` and `sentinel2_step_d_examples/` in `5.Projects/runs` |
-| Run on | not run yet |
-| Result | - |
+| Run on | Colab, between 2026-10-11 and 2026-10-16 |
+| Result | First four scenes: the detector retrained at 10 m raised 12,500 to 15,800 detections per scene against 66 to 450 labelled vessels. That decided the switch to real Sentinel-2 training data (step 9). The full table is in `sentinel2_step_d.json` and is gathered by step 10b. |
 
 ## Step 9: fine-tuning a detector on real Sentinel-2 imagery
 
@@ -158,6 +158,30 @@ This is step E of the Sentinel-2 experiment, added after step 8 showed that resa
 | Runs | `python -m vesselwatch.detect.yolo --config configs/detect/yolo11s_finland.yaml`, then `python -m vesselwatch.detect.finland --name step_e ...` |
 | Code | [`detect/finland_export.py`](../src/vesselwatch/detect/finland_export.py) cuts the scenes into chips with labels. Training is [`detect/yolo.py`](../src/vesselwatch/detect/yolo.py) as in step 5, scoring [`detect/finland.py`](../src/vesselwatch/detect/finland.py) as in steps 6 and 8, now also at stricter confidence thresholds |
 | Writes | Scenes to `5.Projects/Data/sentinel2_finland`; `yolo11s_finland/`, `sentinel2_step_e.json` and `sentinel2_step_e_examples/` to `5.Projects/runs` |
+| Run on | Colab (A100), 2026-10-16; a first attempt was interrupted and the run restarted from scratch |
+| Result | Chips: train 1,526 with vessels and 2,863 without (4,732 vessels), validation 722 and 1,444 (2,440), test 731 and 7,844 (1,694). 100 epochs in 33 minutes, AdamW chosen by Ultralytics (lr 0.002); validation mAP50 levelled off at about 0.80 and mAP50-95 at about 0.33 from epoch 70. On the seven test scenes at confidence 0.25: found 93.1% of vessels (89.8% at IoU 0.5), 38.8% of 4,065 detections hit a vessel; the Finnish reference found 90.1% (86.5%) with 54.1% hits of 2,822. At confidence 0.5 the fine-tuned model finds 73.7% with 54.7% hits, so at equal precision the reference finds more. Under 50 m: 665 of 750 found, against 619 for the reference. The 10 m detector found 8.7% (0.4% at IoU 0.5) with 85,762 detections. The test-chip scores in `yolo11s_finland/metrics_test.json` were cut off in the pasted output; step 10a prints them. |
+
+## Step 10: one set of baselines
+
+Two notebooks that close the gaps before the write-up: every detector on Sentinel-2 in one table, then every result of the project gathered into one file. Run 5c and 7e first, then 10a, then 10b.
+
+| | |
+|---|---|
+| Notebook | [`step_10_baselines/10a_sentinel2_detector_baselines.ipynb`](step_10_baselines/10a_sentinel2_detector_baselines.ipynb) |
+| Question | On the same seven Sentinel-2 scenes and with the same scoring: how do stock YOLO11s, the high-resolution detector, the 10 m detector, the fine-tuned detector and the Finnish reference compare, also at equal precision? |
+| Runs | `python -m vesselwatch.detect.finland --name step_10 ...` with five detectors |
+| Code | [`detect/finland.py`](../src/vesselwatch/detect/finland.py), now with a class filter per detector (`--keep stock=boat`) and the comparison at equal shares of hits |
+| Writes | `sentinel2_step_10.json` and `sentinel2_step_10_examples/` in `5.Projects/runs` |
+| Run on | not run yet |
+| Result | - |
+
+| | |
+|---|---|
+| Notebook | [`step_10_baselines/10b_collect_all_results.ipynb`](step_10_baselines/10b_collect_all_results.ipynb) |
+| Question | Are all results of all steps on record, with the settings that produced them? |
+| Runs | `python -m vesselwatch.collect_results --runs <runs> --models <models> --out <runs>/pathway_results.json` |
+| Code | [`collect_results.py`](../src/vesselwatch/collect_results.py) |
+| Writes | `pathway_results.json` in `5.Projects/runs`; to be copied into the repository as `docs/results/pathway_results.json` |
 | Run on | not run yet |
 | Result | - |
 
